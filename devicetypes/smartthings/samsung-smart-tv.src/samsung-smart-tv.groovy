@@ -40,6 +40,7 @@ metadata {
             command "Exit"
             command "Info"            
             command "Size"
+            command "Auth"
 	}
 
     standardTile("switch", "device.switch", width: 1, height: 1, canChangeIcon: true) {
@@ -107,13 +108,23 @@ metadata {
     }    
     standardTile("Size", "device.switch", decoration: "flat", canChangeIcon: false) {
         state "default", label:'Picture Size', action:"Size", icon:"st.contact.contact.open"
-    }      
+    }  
+    standardTile("Auth", "device.switch", decoration: "flat", canChangeIcon: false) {
+    	state "default", label:'Authenticate', action: "Auth", icon:"st.Electronics.electronics15"
+    }
+    
     main "switch"
-    details (["power","HDMI","Sleep","chup","prech","volup","chdown","mute","voldown", "menu", "Up", "tools", "Left", "Enter", "Right", "Return", "Down", "Exit", "Info","Size"])	
+    details (["power","HDMI","Sleep","chup","prech","volup","chdown","mute","voldown", "menu", "Up", "tools", "Left", "Enter", "Right", "Return", "Down", "Exit", "Info","Size","Auth"])	
 }
 
 def parse(String description) {
 	return null
+}
+
+def Auth() {
+	log.debug "Authenticating with TV"
+    parent.tvAction("AUTHENTICATE",device.deviceNetworkId)
+    sendEvent(name:"Command", value: "Auth", displayed: true)
 }
 
 def off() {
