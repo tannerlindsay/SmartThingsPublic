@@ -105,18 +105,17 @@ Key Enhancements from the Screen Shots Below
   - Now displays the parent thermostat current Program within each Sensor device
   - New mini-icons indicate which of the 3 default programs (Home, Away, Sleep) the sensor is included in
     - The sensor can be added or removed from a Program by tapping these mini icons
-  - Includes 4 new "blank" mini-tiles that are utilized by the new Smart Room Helper App
-
+  - Includes 4 new blank mini-tiles that are utilized by the new Smart Room Helper App
+	
 <b>SmartThings Integration</b>
-
-	- Messages sent to the Device notification log (found under the Recently tab of a Device) are now optimized, most with colored icons
-	- All current Attributes and Capabilities of Thermostat devices are supported
-	- Most Ecobee Setting variables are now available as Attributes of a Thermostat (so things like CoRE can see them)
-	- Now offers several new API Command interfaces, including:
-		- DeleteVacation()	(deletes currently running vacation only)
-		- AddSensorToProgram(), AddSensorToHome(), AddSensorToAway(), AddSensorToSleep()
-		- DeleteSensorFromProgram(), DeleteSensorFromHome(), DeleteSensorFromAway(), DeleteSensorFromSleep()
+	- Messages sent to the Device notification log (found under the Recently tab of a Device) are now optimized, most with colored icons 
+	- All current Attributes and Capabilities of Thermostat devices are supported 
+	- Most Ecobee Setting variables are now available as Attributes of a Thermostat (so things like CoRE can see them) 
+	- Now offers several new API Command interfaces, including
+		- AddSensorToProgram(), AddSensorToHome(), AddSensorToAway(), AddSensorToSleep() 
+		- DeleteSensorFromProgram(), DeleteSensorFromHome(), DeleteSensorFromAway(), DeleteSensorFromSleep() 
 		- RemoveSensorFromProgram(), RemoveSensorFromHome(), (etc.)
+		- DeleteVacation() (deletes currently running vacation only
 	 
 <b>Operational Enhancements</b>
 
@@ -126,7 +125,6 @@ Key Enhancements from the Screen Shots Below
     - From the updated Ecobee objects, only the data that has changed is sent to the individual devices
   - As a result of the above, it is possible to run will polling Frequency less than the recommended 3 minutes
       
-    
 
 Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below. 
 
