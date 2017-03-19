@@ -78,7 +78,37 @@ Key Highlights include:
 - Full support for both Fahrenheit and Celsius
 
 ## <a name="features-therm-ui">Thermostat and Sensor Device User Interfaces</a>
-The primary user interface on a day-to-day basis will be two different types of Device Handlers that are shown on the `Things` list under `My Home` in the mobile app. Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below. 
+The primary user interface on a day-to-day basis will be two different types of Device Handlers that are shown on the `Things` list under `My Home` in the mobile app. 
+
+Key Enhancements from the Screen Shots Below
+---------------------------------------
+<b>Thermostat UI Feature Enhancements</b>
+  - The main MultiAttributeTile tile now reflects additional information
+    - Background colors match Ecobee3 thermostat colors for Idle (magenta), Heat (orange) & Cool (blue), and Fan Only (green) and Offline (red) are added
+    - Displays (Smart Recovery) when heating/cooling in advance of a Program change
+    - Displays the setpoint temperature that will initiate a heat/cool demand while idle, and the actual target temp while heating/cooling
+    - All temperatures can be configured to display in 0, 1 or 2 decimal positions (with appropriate rounding)
+  - Most icons are now in full color
+    - New Operating State icons reflect current stage for multi-stage Heat or Cool, plus humidification/dehumidification (if configured)
+    - Hold: Program icons are now "filled" so you can recognize the Hold at a glance
+    - Operating State, Current Program, and Motion icons will go blank to indicate "Offline" status should the thermostat lose its connection to the Ecobee Cloud for any reason (e.g. power or network/wifi failure).
+  - Dynamic "Resume" button
+    - Normally displays as Resume (Program) button, to override a current Hold: event
+    - While thermostat is in a Vacation event, the button becomes 'Cancel" to allow the cancelation of the Vacation
+  - Hold/Vacation Status display
+    - Display when current Hold or Vacation ends
+    - If the thermostat loses its connection to the Ecobee Cloud, displays the time that the last valid update was recieved
+   
+<b>Operational Enhancements</b>
+  - Operational Efficiency
+    - Redesigned to do only lightweight polls of the Ecobee Cloud before requesting updates
+    - If updates are available, then only requests those updated objects, and only for the thermostats with updates
+    - From the updated Ecobee objects, only the data that has changed is sent to the individual devices
+  - As a result of the above, it is possible to run will polling Frequency less than the recommended 3 minutes
+      
+    
+
+Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below. 
 
 `Ecobee Thermostat` Device |  `Ecobee Thermostat` Device w/ Annotation
 :-------------------------:|:-------------------------:
@@ -263,10 +293,10 @@ Follow these steps to install the `Ecobee Thermostat`:
 Here we will install the following SmartApps:
 - `Ecobee (Connect)`
 - `ecobee Routines` (Child SmartApp)
-- `ecobee Open Contacts' (Child SmartApp)
-- `ecobee Smart Circulation' (Child SmartApp)
-- `ecobee Smart Room' (Child SmartApp)
-- `ecobee Smart Zones' (Child SmartApp)
+- `ecobee Open Contacts` (Child SmartApp)
+- `ecobee Smart Circulation` (Child SmartApp)
+- `ecobee Smart Room` (Child SmartApp)
+- `ecobee Smart Zones` (Child SmartApp)
 
 Follow the steps for _either_ the GitHub Integration or the Manual method below. Do **not** try to do both methods.
 
@@ -319,7 +349,7 @@ Follow these steps to install the `ecobee Routines` SmartApps:
 - [IDE] Click on the `My SmartApps` tab
 - [IDE] Click `New SmartApp` (top right corner)
 - [IDE] Click `From Code`
-- [GitHub] Go to the respository for the `Ecobee (Connect)` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-routines.src/ecobee-routines.groovy>
+- [GitHub] Go to the respository for the `Ecobee Routines` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-routines.src/ecobee-routines.groovy>
 - [GitHub] Click `Raw`
 - [GitHub] Select all of the text in the window (use Ctrl-A if using Windows)
 - [GitHub] Copy all of the selected text to the Clipboard (use Ctrl-C if using Windows)
@@ -338,7 +368,7 @@ Repeat the above steps for the rest of the desired Helper SmartApps:
 - `ecobee Zones Circulation` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-zones.src/ecobee-smart-zones.groovy>
 
 ## <a name="install-smartapp-phone">Install and Run `Ecobee (Connect) `SmartApp on Phone/Tablet</a>
-> **NOTE**: I have only tested this on an iPhone 6 as I do not have access to Android device. Feedback and bug reports are welcome if any issues are found on any platform. There are already some known issues with platforms behaving differently due to differences in the SmartThings apps on those platforms.
+> **NOTE**: My primary device is an iPhone 7 Plus, but I have tested on an Android-based tablet as well. Feedback and bug reports are welcome if any issues are found on any platform. There are some known issues with platforms behaving differently due to differences in the SmartThings apps on those platforms. I have tried to work around the issues created recently by the Android 2.3.1 updates where SmartThings broke many fonts and graphical displays.
 
 The SmartApp will guide you through the basic installation and setup process. It includes the following aspects:
 - Authentication with Ecobee to allow API Calls for your thermostat(s) (and connected sensors)
