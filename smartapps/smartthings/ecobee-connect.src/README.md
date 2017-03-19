@@ -102,13 +102,14 @@ Key Enhancements from the Screen Shots Below
    
 <b>Sensor UI Feature Enhancements</b>
   -	A new multiAttributeTile replaces the old presentation, with motion displayed at the bottom left corner
-  - Now displays the parent thermostat's current Program within each Sensor device
-  - New mini-icons indicate which of the 3 default programs (Home, Away, Sleep) the sensor is included in. 
-    - The sensor can be added or removed from a Program by tapping these mini icons.
+  - Now displays the parent thermostat current Program within each Sensor device
+  - New mini-icons indicate which of the 3 default programs (Home, Away, Sleep) the sensor is included in
+    - The sensor can be added or removed from a Program by tapping these mini icons
   - Includes 4 new "blank" mini-tiles that are utilized by the new Smart Room Helper App
 
 <b>SmartThings Integration</b>
-	- Messages sent to the Device's notification log (found under the Recently tab of a Device) are now optimized, most with colored icons
+
+	- Messages sent to the Device notification log (found under the Recently tab of a Device) are now optimized, most with colored icons
 	- All current Attributes and Capabilities of Thermostat devices are supported
 	- Most Ecobee Setting variables are now available as Attributes of a Thermostat (so things like CoRE can see them)
 	- Now offers several new API Command interfaces, including:
@@ -118,6 +119,7 @@ Key Enhancements from the Screen Shots Below
 		- RemoveSensorFromProgram(), RemoveSensorFromHome(), (etc.)
 	 
 <b>Operational Enhancements</b>
+
   - Operational Efficiency
     - Redesigned to do only lightweight polls of the Ecobee Cloud before requesting updates
     - If updates are available, then only requests those updated objects, and only for the thermostats with updates
