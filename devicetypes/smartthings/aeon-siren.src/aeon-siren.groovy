@@ -20,10 +20,11 @@ metadata {
 	capability "Actuator"
 	capability "Alarm"
 	capability "Switch"
+	capability "Health Check"
 
 	command "test"
 
-	fingerprint deviceId: "0x1005", inClusters: "0x5E,0x98"
+	fingerprint deviceId: "0x1005", inClusters: "0x5E,0x98", deviceJoinName: "Aeon Labs Siren (Gen 5)"
  }
 
  simulator {
@@ -33,15 +34,17 @@ metadata {
 	reply "9881002001FF,delay 3000,988100200100,9881002002": "command: 9881, payload: 00200300"
  }
 
- tiles {
-	standardTile("alarm", "device.alarm", width: 2, height: 2) {
-		state "off", label:'off', action:'alarm.siren', icon:"st.alarm.alarm.alarm", backgroundColor:"#ffffff"
-		state "both", label:'alarm!', action:'alarm.off', icon:"st.alarm.alarm.alarm", backgroundColor:"#e86d13"
+ tiles(scale: 2) {
+	multiAttributeTile(name:"alarm", type: "generic", width: 6, height: 4){
+		tileAttribute ("device.alarm", key: "PRIMARY_CONTROL") {
+			attributeState "off", label:'off', action:'alarm.siren', icon:"st.alarm.alarm.alarm", backgroundColor:"#ffffff"
+			attributeState "both", label:'alarm!', action:'alarm.off', icon:"st.alarm.alarm.alarm", backgroundColor:"#e86d13"
+		}
 	}
-	standardTile("test", "device.alarm", inactiveLabel: false, decoration: "flat") {
+	standardTile("test", "device.alarm", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
 		state "default", label:'', action:"test", icon:"st.secondary.test"
 	}
-	standardTile("off", "device.alarm", inactiveLabel: false, decoration: "flat") {
+	standardTile("off", "device.alarm", inactiveLabel: false, decoration: "flat", width: 2, height: 2) {
 		state "default", label:'', action:"alarm.off", icon:"st.secondary.off"
 	}
 
@@ -56,6 +59,9 @@ metadata {
 }
 
 def updated() {
+// Device-Watch simply pings if no device events received for 32min(checkInterval)
+	sendEvent(name: "checkInterval", value: 2 * 15 * 60 + 2 * 60, displayed: false, data: [protocol: "zwave", hubHardwareId: device.hub.hardwareID])
+
 	if(!state.sound) state.sound = 1
 	if(!state.volume) state.volume = 3
 
@@ -145,4 +151,11 @@ def test() {
 
 private secure(physicalgraph.zwave.Command cmd) {
 	zwave.securityV1.securityMessageEncapsulation().encapsulate(cmd).format()
+}
+
+/**
+ * PING is used by Device-Watch in attempt to reach the Device
+ * */
+def ping() {
+	secure(zwave.basicV1.basicGet())
 }

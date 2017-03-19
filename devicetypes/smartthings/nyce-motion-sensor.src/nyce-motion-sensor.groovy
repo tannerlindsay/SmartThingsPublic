@@ -13,6 +13,7 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+import physicalgraph.zigbee.clusters.iaszone.ZoneStatus
 
 metadata {
 	definition (name: "NYCE Motion Sensor", namespace: "smartthings", author: "SmartThings") {
@@ -20,18 +21,19 @@ metadata {
 		capability "Configuration"
 		capability "Battery"
 		capability "Refresh"
+		capability "Sensor"
         
         command "enrollResponse"
 
 		fingerprint inClusters: "0000,0001,0003,0406,0500,0020", manufacturer: "NYCE", model: "3041"
-        fingerprint inClusters: "0000,0001,0003,0406,0500,0020", manufacturer: "NYCE", model: "3043"
-        fingerprint inClusters: "0000,0001,0003,0406,0500,0020", manufacturer: "NYCE", model: "3045"
+        fingerprint inClusters: "0000,0001,0003,0406,0500,0020", manufacturer: "NYCE", model: "3043", deviceJoinName: "NYCE Ceiling Motion Sensor"
+        fingerprint inClusters: "0000,0001,0003,0406,0500,0020", manufacturer: "NYCE", model: "3045", deviceJoinName: "NYCE Curtain Motion Sensor"
 	}
 
 	tiles {
 		standardTile("motion", "device.motion", width: 2, height: 2) {
-			state("active", label:'motion', icon:"st.motion.motion.active", backgroundColor:"#53a7c0")
-			state("inactive", label:'no motion', icon:"st.motion.motion.inactive", backgroundColor:"#ffffff")
+			state("active", label:'motion', icon:"st.motion.motion.active", backgroundColor:"#00A0DC")
+			state("inactive", label:'no motion', icon:"st.motion.motion.inactive", backgroundColor:"#cccccc")
 		}
         
          valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false) {
@@ -143,51 +145,14 @@ private Map parseReportAttributeMessage(String description) {
  
 
 private Map parseIasMessage(String description) {
-    List parsedMsg = description.split(' ')
-    String msgCode = parsedMsg[2]
-    
-    Map resultMap = [:]
-    switch(msgCode) {
-        case '0x0030': // Closed/No Motion/Dry
-            log.debug 'no motion'
-            resultMap.name = 'motion'
-            resultMap.value = 'inactive'
-            break
+	ZoneStatus zs = zigbee.parseZoneStatus(description)
+	Map resultMap = [:]
 
-        case '0x0032': // Open/Motion/Wet
-            log.debug 'motion'
-            resultMap.name = 'motion'
-            resultMap.value = 'active'
-            break
+	resultMap.name = 'motion'
+	resultMap.value = zs.isAlarm2Set() ? 'active' : 'inactive'
+	log.debug(zs.isAlarm2Set() ? 'motion' : 'no motion')
 
-        case '0x0032': // Tamper Alarm
-        	log.debug 'motion with tamper alarm'
-            resultMap.name = 'motion'
-            resultMap.value = 'active'
-            break
-
-        case '0x0033': // Battery Alarm
-            break
-
-        case '0x0034': // Supervision Report
-        	log.debug 'no motion with tamper alarm'
-            resultMap.name = 'motion'
-            resultMap.value = 'inactive'
-            break
-
-        case '0x0035': // Restore Report
-            break
-
-        case '0x0036': // Trouble/Failure
-        	log.debug 'motion with failure alarm'
-            resultMap.name = 'motion'
-            resultMap.value = 'active'
-            break
-
-        case '0x0038': // Test Mode
-            break
-    }
-    return resultMap
+	return resultMap
 }
 
 def refresh()
@@ -201,10 +166,10 @@ def refresh()
 
 def configure() {
 
-	String zigbeeId = swapEndianHex(device.hub.zigbeeId)
-	log.debug "Confuguring Reporting, IAS CIE, and Bindings."
+	String zigbeeEui = swapEndianHex(device.hub.zigbeeEui)
+	log.debug "Configuring Reporting, IAS CIE, and Bindings."
 	def configCmds = [
-    	"zcl global write 0x500 0x10 0xf0 {${zigbeeId}}", "delay 200",
+    	"zcl global write 0x500 0x10 0xf0 {${zigbeeEui}}", "delay 200",
 		"send 0x${device.deviceNetworkId} 1 1", "delay 1500",
         
         "zcl global send-me-a-report 1 0x20 0x20 0x3600 0x3600 {01}", "delay 200",

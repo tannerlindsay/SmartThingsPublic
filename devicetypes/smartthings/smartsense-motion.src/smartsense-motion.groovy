@@ -27,33 +27,25 @@ metadata {
 		status "inactive": "zone report :: type: 19 value: 0030"
 	}
 
-	tiles {
-		standardTile("motion", "device.motion", width: 2, height: 2) {
-			state("active", label:'motion', icon:"st.motion.motion.active", backgroundColor:"#53a7c0")
-			state("inactive", label:'no motion', icon:"st.motion.motion.inactive", backgroundColor:"#ffffff")
+	tiles(scale: 2) {
+		multiAttributeTile(name:"motion", type: "generic", width: 6, height: 4){
+			tileAttribute ("device.motion", key: "PRIMARY_CONTROL") {
+				attributeState "active", label:'motion', icon:"st.motion.motion.active", backgroundColor:"#53a7c0"
+				attributeState "inactive", label:'no motion', icon:"st.motion.motion.inactive", backgroundColor:"#ffffff"
+			}
 		}
-		valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false) {
-			state "battery", label:'${currentValue}% battery', unit:""/*, backgroundColors:[
-				[value: 5, color: "#BC2323"],
-				[value: 10, color: "#D04E00"],
-				[value: 15, color: "#F1D801"],
-				[value: 16, color: "#FFFFFF"]
-			]*/
+		valueTile("battery", "device.battery", decoration: "flat", inactiveLabel: false, width: 2, height: 2) {
+			state "battery", label:'${currentValue}% battery', unit:""
 		}
-		/*
-		valueTile("lqi", "device.lqi", decoration: "flat", inactiveLabel: false) {
-			state "lqi", label:'${currentValue}% signal', unit:""
-		}
-		*/
-		
+
 		main "motion"
-		details(["motion", "battery"/*, "lqi"*/])
+		details(["motion", "battery"])
 	}
 }
 
 def parse(String description) {
-	def results
-	if (isZoneType19(description) || !isSupportedDescription(description)) {
+	def results = [:]
+	if (description.startsWith("zone") || !isSupportedDescription(description)) {
 		results = parseBasicMessage(description)
 	}
 	else if (isMotionStatusMessage(description)){
@@ -65,21 +57,24 @@ def parse(String description) {
 
 private Map parseBasicMessage(description) {
 	def name = parseName(description)
-	def value = parseValue(description)
-	def linkText = getLinkText(device)
-	def descriptionText = parseDescriptionText(linkText, value, description)
-	def handlerName = value
-	def isStateChange = isStateChange(device, name, value)
+	def results = [:]
+	if (name != null) {
+		def value = parseValue(description)
+		def linkText = getLinkText(device)
+		def descriptionText = parseDescriptionText(linkText, value, description)
+		def handlerName = value
+		def isStateChange = isStateChange(device, name, value)
 
-	def results = [
-		name: name,
-		value: value,
-		linkText: linkText,
-		descriptionText: descriptionText,
-		handlerName: handlerName,
-		isStateChange: isStateChange,
-		displayed: displayed(description, isStateChange)
-	]
+		results = [
+				name           : name,
+				value          : value,
+				linkText       : linkText,
+				descriptionText: descriptionText,
+				handlerName    : handlerName,
+				isStateChange  : isStateChange,
+				displayed      : displayed(description, isStateChange)
+		]
+	}
 	log.debug "Parse returned $results.descriptionText"
 	return results
 }
@@ -92,16 +87,12 @@ private String parseName(String description) {
 }
 
 private String parseValue(String description) {
-	if (isZoneType19(description)) {
-		if (translateStatusZoneType19(description)) {
-			return "active"
-		}
-		else {
-			return "inactive"
-		}
+	def zs = zigbee.parseZoneStatus(description)
+	if (zs) {
+		zs.isAlarm1Set() ? "active" : "inactive"
+	} else {
+		description
 	}
-
-	description
 }
 
 private parseDescriptionText(String linkText, String value, String description) {
