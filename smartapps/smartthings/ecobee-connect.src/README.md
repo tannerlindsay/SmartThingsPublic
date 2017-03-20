@@ -1,7 +1,7 @@
 Ecobee Thermostat SmartApp(s) and related Device Types for use with the SmartThings Hub
 ======================================================
 
->NOTE: This version of Ecobee Thermostat support and integration for SmartThings has been developed as an extension of the amazing contributions originally created by Sean Stryker (StrykerSKS). This README file is an edited/updated bersion of Sean's, modified to reflect the enhancements AND the GitHub paths/locations for those wanting to use my version. I have NOT yet updated all the screen shots - these currently reflect the UI of Sean's version, and not mine.
+>NOTE: This version of Ecobee Thermostat support and integration for SmartThings has been developed as an extension of the amazing contributions originally created by Sean Stryker (StrykerSKS). This README file is an edited/updated version of Sean's, modified to reflect the enhancements AND the GitHub paths/locations for those wanting to use my version. I have NOT yet updated all the screen shots - these currently reflect the UI of Sean's version, and not mine.
 
 ## <a name="top">Table Of Contents</a>
 - [Introduction](#intro)
@@ -80,8 +80,7 @@ Key Highlights include:
 ## <a name="features-therm-ui">Thermostat and Sensor Device User Interfaces</a>
 The primary user interface on a day-to-day basis will be two different types of Device Handlers that are shown on the `Things` list under `My Home` in the mobile app. 
 
-Key Enhancements from the Screen Shots Below
----------------------------------------
+### Key Enhancements
 
 <b>Thermostat UI Feature Enhancements</b>
   - The main MultiAttributeTile tile now reflects additional information
@@ -108,23 +107,28 @@ Key Enhancements from the Screen Shots Below
   - Includes 4 new blank mini-tiles that are utilized by the new Smart Room Helper App
 	
 <b>SmartThings Integration</b>
-	- Messages sent to the Device notification log (found under the Recently tab of a Device) are now optimized, most with colored icons 
-	- All current Attributes and Capabilities of Thermostat devices are supported 
-	- Most Ecobee Setting variables are now available as Attributes of a Thermostat (so things like CoRE can see them) 
-	- Now offers several new API Command interfaces, including
-		- AddSensorToProgram(), AddSensorToHome(), AddSensorToAway(), AddSensorToSleep() 
-		- DeleteSensorFromProgram(), DeleteSensorFromHome(), DeleteSensorFromAway(), DeleteSensorFromSleep() 
-		- RemoveSensorFromProgram(), RemoveSensorFromHome(), (etc.)
-		- DeleteVacation() (deletes currently running vacation only
-	 
+  - Messages sent to the Device notification log (found under the Recently tab of a Device) are now optimized, most with associated colored icons 
+  - All current Attributes and Capabilities of Thermostat devices are supported
+  - Most Ecobee Settings Object variables are are now available as Attributes of a Thermostat (so things like CoRE can see them) 
+  - Now offers several new API Command interfaces - see `ecobee-thermostat.groovy` for specifics. These include new API commands to:
+    - Add a sensor to a Program
+    - Delete/Remove a sensor from a Program
+    - Delete the current Vacation
+    - Change the minimum fan on time for both the current running Program and current Vacation event
+
 <b>Operational Enhancements</b>
 
   - Operational Efficiency
     - Redesigned to do only lightweight polls of the Ecobee Cloud before requesting updates
     - If updates are available, then only requests those updated objects, and only for the thermostats with updates
     - From the updated Ecobee objects, only the data that has changed is sent to the individual devices
-  - As a result of the above, it is possible to run will polling Frequency less than the recommended 3 minutes
-      
+    - As a result of the above, it is possible to run will polling Frequency less than the recommended 3 minutes
+  - Temporary vs. 'Permanent' Hold
+    
+    Ecobee devices support a concent of "stacked" holds - each hold operation can be stacked on top of a prior hold, such that Resuming the current hold merely "pops the stack" to the prior hold. This is a very difficult concept to manage across multiple interfaces, because it is difficult to depict what the result of a "Resume" operation will be at any given point in time.
+    
+    This implementation avoids the complexity by supporting only a single depth of Hold: events - whenever you execute a Resume you reset the thermostat to run the currently scheduled Program.
+        
 
 Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below. 
 
@@ -240,7 +244,7 @@ Documentation coming soon.
 # <a name="installation">Installation</a>
 
 ## General
-> **NOTE**: While I have tested this on my system and believe it to be working (and we have over 200 user now). I have not run a full battery of tests that can include all possible corner cases or configurations. It is possible, perhaps even _likely_, that there are still bugs or platform specific issues in this code. If you do run into an issue, the best option is to report it using the [Issues](https://github.com/SANdood/SmartThingsPublic/issues) tab within the GitHub repository. I will do my best to quickly address any issues that are found. 
+> **NOTE**: While I have tested this on my 3 different systems and believe it to be working, I have not run a full battery of tests that can include all possible corner cases or configurations. It is possible, perhaps even _likely_, that there are still bugs or platform specific issues in this code. If you do run into an issue, the best option is to report it using the [Issues](https://github.com/SANdood/SmartThingsPublic/issues) tab within the GitHub repository. I will do my best to quickly address any issues that are found. 
 
 It is highly recommended that you use the GitHub Integration that SmartThings offers with their IDE. This will make it **much** easier to keep up to date with changes over time. For the general steps needed for setting up GitHub IDE integration, please visit <http://docs.smartthings.com/en/latest/tools-and-ide/github-integration.html> and follow the steps for performing the setup.
 
