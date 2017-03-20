@@ -244,7 +244,7 @@ Documentation coming soon.
 # <a name="installation">Installation</a>
 
 ## General
-> **NOTE**: While I have tested this on my 3 different systems and believe it to be working, I have not run a full battery of tests that can include all possible corner cases or configurations. It is possible, perhaps even _likely_, that there are still bugs or platform specific issues in this code. If you do run into an issue, the best option is to report it using the [Issues](https://github.com/SANdood/SmartThingsPublic/issues) tab within the GitHub repository. I will do my best to quickly address any issues that are found. 
+> **NOTE**: While I have tested this on my 3 location configuration and believe it to be working well, I have not run a full battery of tests that can include all possible corner cases or configurations. It is possible, perhaps even _likely_, that there are still bugs or platform specific issues in this code. If you do run into an issue, the best option is to report it using the [Issues](https://github.com/SANdood/SmartThingsPublic/issues) tab within the GitHub repository. I will do my best to quickly address any issues that are found. 
 
 It is highly recommended that you use the GitHub Integration that SmartThings offers with their IDE. This will make it **much** easier to keep up to date with changes over time. For the general steps needed for setting up GitHub IDE integration, please visit <http://docs.smartthings.com/en/latest/tools-and-ide/github-integration.html> and follow the steps for performing the setup.
 
