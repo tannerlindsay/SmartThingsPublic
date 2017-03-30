@@ -16,13 +16,14 @@
  *	1.0.0	-	Preparation for General Release
  *	1.0.1	-	Tweaked LOG and setup for consistency across all the Helper SmartApps
  *	1.0.2	-	Fixed 'clear()' and a typo or two
+ *  1.0.3	-	Optimized prior fix
  *
  */
  
  /**
   * TODO: Add support for more than on/off such as programs
   */
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -236,7 +237,7 @@ private turnoffHVAC() {
     	tmpThermSavedState[therm.id] = therm.latestValue("thermostatMode")
         LOG("Updated state: ${therm.latestValue("thermostatMode")}", 5)
     }
-    // state.thermSavedState.clear()
+    if (state.thermSavedState) state.thermSavedState = null
     state.thermSavedState = tmpThermSavedState
     LOG("Turning off HVACs per action.", 5)
     if( settings.whichAction.contains("HVAC") ) {
@@ -266,8 +267,7 @@ private turnonHVAC() {
             def thermId = therm.id
             def mode = state.thermSavedState[thermId] 
             
-			LOG("Setting the thermostat ${thermId}", 4)
-            LOG("And mode to ${mode}", 4)
+			LOG("Setting the thermostat ${thermId} mode to ${mode}", 4)
 			therm.setThermostatMode(mode)
 		} 
 	}
