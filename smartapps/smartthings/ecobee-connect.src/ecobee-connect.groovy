@@ -25,58 +25,21 @@
  *		BAB - 01-20-2017 - Massive overhaul for efficiency, performance, bug fixes and UI enhancements
  *
  *	Updates by Barry A. Burke (storageanarchy@gmail.com)
- * 	Date: 2017-01-28
- *	https://github.com/SANdood/Ecobee
  *
  *  See Changelog for change history
- *
- * 	0.9.18 - Fix customer Program handling
- *	0.9.19 - Add attributes to indicate custom program names to child thermostats (smart1, smart2, etc)
- *  0.9.20 - Allow installations where no "location" is set. Useful for virtual hubs and testing
- *	0.10.1 - Massive overhaul (see https://github.com/SANdood/Ecobee)
- *	0.10.2 - Added Smart Zone helper app
- *	0.10.3 - Added Smart Circulation helper app
- *	0.10.4 - Beta Release of Barry's updated version
- *	0.10.5 - Bug Fixes by Barry
- *				- display Vacation's event.fanOnTime if in Vacation hold
- *				- rewrite Vacation with new fanMinOnTime via setVacationFanMinOnTim
- *	0.10.6 - Fix initial forcePoll in pollChildren()
- *  0.10.7 - Interim fix
- *	0.10.8 - Resolve unitialized variables
- *	0.10.9 - More error detection + Android authentication fixes
- *	0.10.10- Closed the unititalized pollingInterval problem (again)
- *	0.10.11- Found and fixed issue (in updateThermostatData); optimized ue of atomics
- *	0.10.12- Refined LOG levels
- *	0.10.13- Added sending programsList (list of available ecobee climates) to thermostat(s)
- *	0.10.14- Reduced frequency of sending of never/rarely changing objects to the Thermostat(s)
- *	0.10.15- Converted heat/cool ranges to C when appropriate
- *	0.10.16- Proactively refresh the AuthToken if the expiration time is less than the watchdog schedule
- *	0.10.17- Optimized sunrise/sunset handling, watchdogInterval and updateThermostat map creation 
- *	0.10.18- Still more optimizations
- *	0.10.19- Revamped watchdog's refreshAuthToken strategy
- *	0.10.21- Yet another attempt to fixed initialization errors on first install
- *	0.10.22- Gotcha, dagnabbit! settings.vars weren't being initialized if Preferences page never opened
- *	0.10.23- Fixed humiditySetpoint (verify valid extendedRuntime data)
- *	0.10.24- Don't adjust Heating/Cooling setpoints during 'fan only'
- *	0.10.25- Optimized updates for setpoints and programs
- * 	0.10.26- Removed pre-emptive Auth Refresh, per Ecobee API use guidelines 
- *			 Hides the timeout error if auth refresh is successful
- *			 Ensure auth refresh only occurs once, avoids multiple recovery threads
- *			 Retry sendJson if fails on Auth expiry
- *	0.10.27- Update configured/selected sensors only, and then only when there are changes
- *	0.10.28- Major overhaul of sending updates to devices for speed & efficiency.
- *			 Simplification of logging messages - optimal Debug Level is now 2
- *			 Added capability to add/remove a sensor from a climate/program
+
  *	1.0.0 -	 Final preparation for general release
  *	1.0.1 -	 Added "Offline" status when ecobee Cloud loses connection with thermostat (power out, network down, etc.)
  *	1.0.2 -	 Chasing another uninitialized variable issue
  *	1.0.3 -  Updates to thermostat->Ecobee Cloud connection handling
+ *	1.0.4 -	 Added Health Check support for Thermostat device
+ *	1.0.5 -	 Beginning of support for thermostats in different timeZones than SmartThings hub
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.3" }
+def getVersionNum() { return "1.0.5" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -638,7 +601,7 @@ def connectionStatus(message, redirectUrl = null) {
 // Get the list of Ecobee Thermostats for use in the settings pages
 def getEcobeeThermostats() {	
 	LOG("====> getEcobeeThermostats() entered", 5)    
- 	def requestBody = '{"selection":{"selectionType":"registered","selectionMatch":"","includeRuntime":true,"includeSensors":true,"includeProgram":true}}'
+ 	def requestBody = '{"selection":{"selectionType":"registered","selectionMatch":"","includeRuntime":true,"includeSensors":true,"includeLocation":true,"includeProgram":true}}'
 	def deviceListParams = [
 			uri: apiEndpoint,
 			path: "/1/thermostat",
@@ -647,6 +610,7 @@ def getEcobeeThermostats() {
 	]
 
 	def stats = [:]
+    def statLocation = [:]
     try {
         httpGet(deviceListParams) { resp ->
 		LOG("getEcobeeThermostats() - httpGet() response: ${resp.data}", 4)
@@ -661,6 +625,7 @@ def getEcobeeThermostats() {
             	resp.data.thermostatList.each { stat ->
 					def dni = [app.id, stat.identifier].join('.')
 					stats[dni] = getThermostatDisplayName(stat)
+                    statLocation[stat.identifier] = stat.location
                 }
             } else {                
                 LOG("getEcobeeThermostats() - httpGet() in else: http status: ${resp.status}", 1)
@@ -680,7 +645,8 @@ def getEcobeeThermostats() {
         refreshAuthToken()
     }
 	atomicState.thermostatsWithNames = stats
-    LOG("atomicState.thermostatsWithNames == ${atomicState.thermostatsWithNames}", 4)
+    atomicState.statLocation = statLocation
+    LOG("getEcobeeThermostats() - thermostatsWithNames: ${stats}, locations: ${statLocation}", 4, null, 'trace')
 	return stats
 }
 
@@ -810,6 +776,8 @@ def initialize() {
     	LOG("updated() - Exception encountered trying to unschedule(). Exception: ${e}", 2, null, "error")
     }    
     
+    subscribe(app, appHandler)
+
     def nowTime = now()
     def nowDate = getTimestamp()
     
@@ -834,26 +802,29 @@ def initialize() {
     atomicState.forcePoll = true				// make sure we get ALL the data after initialization
     atomicState.hourlyForcedUpdate = 0
     atomicState.needExtendedRuntime = true		// we'll stop getting it once we decide we don't need it
+
+    getTimeZone()		// these will set/refresh atomicState.timeZone
+    getZipCode()		// and atomicState.zipCode (because atomicState.forcePoll is true)
     
-    
-    def sunriseAndSunset = getSunriseAndSunset()
-    // LOG("sunriseAndSunset == ${sunriseAndSunset}")
-    if(location.timeZone) {
-        atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm", location.timeZone).toDouble()
-        atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm", location.timeZone).toDouble()
+    // get sunrise/sunset for the location of the thermostats (prefers thermostat.location.postalCode)
+    def sunriseAndSunset = atomicState.zipCode ? getSunriseAndSunset(zipCode: atomicState.zipCode) : getSunRiseAndSunset()
+    LOG("sunriseAndSunset == ${sunriseAndSunset}")
+    if(atomicState.timeZone) {
+        atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
+        atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
     } else if( (sunriseAndSunset !=  [:]) && (location != null) ) {
-        atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm").toDouble()
-        atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm").toDouble()
+        atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm").toInteger()
+        atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm").toInteger()
     } else {
-    	atomicState.sunriseTime = "0500".toDouble()
-        atomicState.sunsetTime = "1800".toDouble()
+    	atomicState.sunriseTime = "0500".toInteger()
+        atomicState.sunsetTime = "1800".toInteger()
     }
 	
 	// Must do this AFTER setting up sunrise/sunset
 	atomicState.timeOfDay = getTimeOfDay()
 	    
     // Setup initial polling and determine polling intervals
-	atomicState.pollingInterval = getPollingInterval()
+	atomicState.pollingInterval = -1 	// getPollingInterval()
     atomicState.watchdogInterval = 15	// In minutes: 14/28/42/56<- scheduleWatchdog should refresh tokens with 4 minutes to spare
     atomicState.reAttemptInterval = 15 	// In seconds
 	
@@ -954,6 +925,14 @@ private def createChildrenSensors() {
     return true
 }
 
+// somebody pushed my button - do a force poll
+def appHandler(evt) {
+    log.debug "app event ${evt.name}:${evt.value} received"
+    
+    atomicState.forcePoll = true
+    pollChildren()
+}
+
 // NOTE: For this to work correctly getEcobeeThermostats() and getEcobeeSensors() should be called prior
 private def deleteUnusedChildren() {
 	LOG("deleteUnusedChildren() entered", 5)    
@@ -984,11 +963,21 @@ def sunriseEvent(evt) {
 	atomicState.timeOfDay = "day"
     atomicState.lastSunriseEvent = now()
     atomicState.lastSunriseEventDate = getTimestamp()
-    if(location.timeZone) {
-    	atomicState.sunriseTime = new Date().format("HHmm", location.timeZone).toInteger()
+    
+    def sunriseAndSunset = atomicState.zipCode ? getSunriseAndSunset(zipCode: atomicState.zipCode) : getSunRiseAndSunset()
+    if(atomicState.timeZone) {
+        atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
+    } else if( (sunriseAndSunset !=  [:]) && (location != null) ) {
+        atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm").toInteger()
     } else {
-    	atomicState.sunriseTime = new Date().format("HHmm").toInteger()
+    	atomicState.sunriseTime = evt.value.toInteger()
     }
+    
+//    if(atomicState.timeZone) {
+//    	atomicState.sunriseTime = new Date().format("HHmm", atomicState.timeZone).toInteger()
+//    } else {
+//    	atomicState.sunriseTime = new Date().format("HHmm").toInteger()
+//    }
 	atomicState.getWeather = true	// force updating of the weather icon in the thermostat
     atomicState.forcePoll = true
     scheduleWatchdog(evt, true)    
@@ -999,11 +988,21 @@ def sunsetEvent(evt) {
 	atomicState.timeOfDay = "night"
     atomicState.lastSunsetEvent = now()
     atomicState.lastSunsetEventDate = getTimestamp()
-    if(location.timeZone) {
-    	atomicState.sunsetTime = new Date().format("HHmm", location.timeZone).toInteger()
-	} else {
-    	atomicState.sunsetTime = new Date().format("HHmm").toInteger()
+    
+    // get sunrise/sunset for the location of the thermostats (prefers thermostat.location.postalCode)
+    def sunriseAndSunset = atomicState.zipCode ? getSunriseAndSunset(zipCode: atomicState.zipCode) : getSunRiseAndSunset()
+    if(atomicState.timeZone) {
+        atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
+    } else if( (sunriseAndSunset !=  [:]) && (location != null) ) {
+        atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm").toInteger()
+    } else {
+        atomicState.sunsetTime = evt.value.toInteger()
     }
+//    if(atomicState.timeZone) {
+//    	atomicState.sunsetTime = new Date().format("HHmm", atomicState.timeZone).toInteger()
+//	} else {
+//    	atomicState.sunsetTime = new Date().format("HHmm").toInteger()
+//    }
 	atomicState.getWeather = true	// force updating of the weather icon in the thermostat
     atomicState.forcePoll = true	// force a complete poll...
     scheduleWatchdog(evt, true)
@@ -1478,8 +1477,12 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
     String gw = '( equipmentStatus'
 	if (forcePoll || thermostatUpdated) {
 		jsonRequestBody += ',"includeSettings":"true","includeProgram":"true","includeEvents":"true"'
-		gw += ' thermostat'
+		gw += ' thermostat program events'
 	}
+    if (forcePoll) {
+    	jsonRequestBody += ',"includeOemCfg":"true","includeLocation":"true"'
+        gw += ' oemCfg location'
+    }
 	if (forcePoll || runtimeUpdated) {
 		jsonRequestBody += ',"includeRuntime":"true"'
         gw += ' runtime'
@@ -1491,7 +1494,7 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
         }
 
         // only get sensorData if we have any sensors configured
-		if (forcePoll || settings.ecobeesensors?.size() > 0) {
+		if (settings.ecobeesensors?.size() > 0) {
 			jsonRequestBody += ',"includeSensors":"true"'
 			gw += ' sensors'
 		}
@@ -1532,6 +1535,8 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                 def tempWeather = [:]
                 def tempSensors = [:]
                 def tempEquipStat = [:]
+                def tempLocation = [:]
+                def tempOemCfg = [:]
                 
                 // collect the returned data into temporary individual caches (because we can't update individual Map items in an atomicState Map)
                 resp.data.thermostatList.each { stat ->
@@ -1546,6 +1551,8 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                         if (stat.settings) tempSettings[tid] = stat.settings
                         if (stat.program) tempProgram[tid] = stat.program
                         if (stat.events) tempEvents[tid] = stat.events
+                        if (stat.location) tempLocation[tid] = stat.location
+                        if (stat.oemCfg) tempOemCfg[tid] = stat.oemCfg
                     }
  					if (forcePoll || runtimeUpdated) {
  						if (stat.runtime) tempRuntime[tid] = stat.runtime
@@ -1569,7 +1576,15 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                 	if (tempEvents != [:]) {
                    		if (atomicState.events) tempEvents = atomicState.events + tempEvents
                    		atomicState.events = tempEvents
-                	} 
+                	}
+                    if (tempLocation != [:]) {
+                   		if (atomicState.statLocation) tempLocation = atomicState.statLocation + tempLocation
+                   		atomicState.statLocation = tempLocation
+                	}
+                    if (tempOemCfg != [:]) {
+                   		if (atomicState.oemCfg) tempOemCfg = atomicState.oemCfg + tempOemCfg
+                   		atomicState.oemCfg = tempOemCfg
+                	}
                 	if (tempSettings != [:]) {
                    		if (atomicState.settings) tempSettings = atomicState.settings + tempSettings 
                    		atomicState.settings = tempSettings
@@ -1807,7 +1822,7 @@ def updateSensorData() {
                 sensorList += [currentProgramName]
                 
                 // not every sensor has humidity
-               	if (forcePoll || ((humidity != null) && (lastList[4] != humidity))) { sensorData << [ humidity: humidity ] }
+               	if ((humidity != null) && (lastList[4] != humidity)) { sensorData << [ humidity: humidity ] }
                 sensorList += [humidity]
                 
                	// collect the climates that this sensor is included in
@@ -1837,7 +1852,14 @@ def updateSensorData() {
                     sensorData << sensorClimates
                     sensorList += climatesList
                 }
-                   
+                
+                // For Health Check, update the sensor's checkInterval  any time we get forcePolled - which should happen a MINIMUM of once per hour
+                // This because sensors don't necessarily update frequently, so this simple event should be enought to let the ST Health Checker know
+                // we are still alive!
+                if (forcePoll) { 
+            		sensorData << [checkInterval: 3900] // 5 minutes longer than an hour
+                }
+                
                 if (forcePoll || (sensorData != [:])) {
 					sensorCollector[sensorDNI] = [name:it.name,data:sensorData]
                     atomicState."${sensorDNI}" = sensorList
@@ -1863,6 +1885,10 @@ def updateThermostatData() {
     def thermostatUpdated = atomicState.thermostatUpdated
 	boolean usingMetric = wantMetric() // cache the value to save the function calls
 	def forcePoll = atomicState.forcePoll
+    if (forcePoll) {
+        if (atomicState.timeZone == null) atomicState.timeZone = getTimeZone()
+    	if (atomicState.zipCode == null) atomicState.zipCode = getZipCode()
+    }
     Integer apiPrecision = usingMetric ? 2 : 1					// highest precision available from the API
     Integer userPrecision = getTempDecimals()						// user's requested display precision
     String preText = getDebugLevel() <= 2 ? '' : 'updateThermostatData() - '
@@ -1888,6 +1914,8 @@ def updateThermostatData() {
         def program = atomicState.program ? atomicState.program[tid] : [:]
         def events = atomicState.events ? atomicState.events[tid] : [:]
         def runtime = atomicState.runtime ? atomicState.runtime[tid] : [:]
+        def statLocation = atomicState.statLocation ? atomicState.statLocation[tid] : [:]
+        def oemCfg = atomicState.oemCfg ? atomicState.oemCfg[tid] : [:]
         def extendedRuntime = atomicState.extendedRuntime ? atomicState.extendedRuntime[tid] : [:]
 		// not worth it - weather is only accessed twice, and it is a LOT of data - we will access it directly from the atomicState cache
         // def weather = atomicState.weather ? atomicState.weather[tid] : [:]    
@@ -2030,7 +2058,11 @@ def updateThermostatData() {
             currentClimateId = 'offline'
             occupancy = 'unknown'
             
-            holdEndsAt = fixDateTimeString( runtime.lastModified.take(10), runtime.lastModified.drop(11), stat.thermostatTime )
+            // Oddly, the runtime.lastModified is returned in UTC, so we have to convert it to the time zone of the thermostat
+            def myTimeZone = statLocation?.timeZone ? TimeZone.getTimeZone(statLocation.timeZone) : (location.timeZone ? location.timeZone : TimeZone.getTimeZone('UTC'))
+            String localLastModified = new Date().parse('yyyy-MM-dd HH:mm:ss',runtime.lastModified).format('yyyy-MM-dd HH:mm:ss', myTimeZone)
+            // In this case, holdEndsAt is actually the time of the last valid runtime update we have received...
+            holdEndsAt = fixDateTimeString( localLastModified.take(10), localLastModified.drop(11), stat.thermostatTime )
         }
         
         if (runningEvent && isConnected) {
@@ -2202,41 +2234,35 @@ def updateThermostatData() {
         // Runtime stuff that changes most frequently - we test them 1 at a time, and send only the ones that change
         // Send these first, as they generally are the reason anything else changes (so the thermostat's notification log makes sense)
 		if (forcePoll || runtimeUpdated) {
-            def oftenList = [tempTemperature,occupancy,runtime.actualHumidity,tempHeatingSetpoint,tempCoolingSetpoint,humiditySetpoint,userPrecision]
+        	String wSymbol = atomicState.weather[tid]?.forecasts[0]?.weatherSymbol?.toString()
+            def oftenList = [tempTemperature,occupancy,runtime.actualHumidity,tempHeatingSetpoint,tempCoolingSetpoint,wSymbol,tempWeatherTemperature,humiditySetpoint,userPrecision]
             def lastOList = []
             lastOList = changeOften[tid]
-            if (forcePoll || !lastOList) lastOList = [999,"x",-1,-1,-1,-1,-1] 
+            if (forcePoll || !lastOList || (lastOList.size() < 8)) lastOList = [999,"x",-1,-1,-1,-999,-999,-1] 
             if (lastOList[0] != tempTemperature) data += [temperature: String.format("%.${apiPrecision}f", tempTemperature.toDouble().round(apiPrecision)),]
             if (lastOList[1] != occupancy) data += [motion: occupancy,]
             if (lastOList[2] != runtime.actualHumidity) data += [humidity: runtime.actualHumidity,]
             // send these next two also when the userPrecision changes
-            if ((lastOList[3] != tempHeatingSetpoint) || (lastOList[6] != userPrecision)) data += [heatingSetpoint: String.format("%.${userPrecision}f", tempHeatingSetpoint.toDouble().round(userPrecision)),]
-            if ((lastOList[4] != tempCoolingSetpoint) || (lastOList[6] != userPrecision)) data += [coolingSetpoint: String.format("%.${userPrecision}f", tempCoolingSetpoint.toDouble().round(userPrecision)),]
-            if (lastOList[5] != humiditySetpoint) data += [humiditySetpoint: humiditySetpoint,]
+            if ((lastOList[3] != tempHeatingSetpoint) || (lastOList[6] != userPrecision)) data += [heatingSetpoint: String.format("%.${userPrecision}f", tempHeatingSetpoint?.toDouble().round(userPrecision)),]
+            if ((lastOList[4] != tempCoolingSetpoint) || (lastOList[6] != userPrecision)) data += [coolingSetpoint: String.format("%.${userPrecision}f", tempCoolingSetpoint?.toDouble().round(userPrecision)),]
+            if ((lastOList[5] != wSymbol) && isConnected) data += [weatherSymbol: wSymbol]	// only update weather if we are still connected - else we need to be silent
+            if ((lastOList[6] != tempWeatherTemperature) && isConnected) data += [weatherTemperature: String.format("%.${userPrecision}f", tempWeatherTemperature?.toDouble().round(userPrecision)),]
+            if (lastOList[7] != humiditySetpoint) data += [humiditySetpoint: humiditySetpoint,]
            	changeOften[tid] = oftenList
             atomicState.changeOften = changeOften
-            
-            // Weather only changes every 15 minutes, so NBD - send it every time we get it, even if it hasn't changed
-        	if (atomicState.getWeather) {				
-        		def wSymbol = ''
-            	def wTemp = ''
-        		if (tempWeatherTemperature.isNumber()) {
-            		wSymbol = atomicState.weather[tid].forecasts[0].weatherSymbol.toString()
-                	wTemp = String.format("%.${userPrecision}f", tempWeatherTemperature.toDouble().round(userPrecision))
-            	}
-                data += [
-                	weatherSymbol: wSymbol,
-					weatherTemperature: wTemp,
-                ]
-            }
 		}
         
         // API link to Ecobee's Cloud status - doesn't change unless things get broken
-        def cloudList = [lastPoll,apiConnection,isConnected]
+        Integer pollingInterval = getPollingInterval() // if this changes, we recalculate checkInterval for Health Check
+        def cloudList = [lastPoll,apiConnection,pollingInterval,isConnected]
         if (forcePoll || (changeCloud == [:]) || !changeCloud.containsKey(tid) || (changeCloud[tid] != cloudList)) { 
+        	def checkInterval = (pollingInterval <= 5) ? (12*60) : (((pollingInterval+1)*2)*60) 
+            if (checkInterval > 3600) checkInterval = 3900 	// 5 minutes longer than an hour
             data += [
         		lastPoll: lastPoll,
-            	apiConnected: apiConnection,
+            	apiConnected: apiConnection,		// link from ST to Ecobee
+                ecobeeConnected: isConnected,		// link from Ecobee to Thermostat
+                checkInterval: checkInterval,
         	]
             changeCloud[tid] = cloudList
             atomicState.changeCloud = changeCloud
@@ -2245,6 +2271,8 @@ def updateThermostatData() {
         // SmartApp configuration settings that almost never change (Listed in order of frequency that they should change normally)
         Integer dbgLevel = getDebugLevel()
         String tmpScale = getTemperatureScale()
+        def timeOfDay = atomicState.timeZone ? getTimeOfDay() : getTimeOfDay(tid)
+        // log.debug "timeOfDay: ${timeOfDay}"
 		def configList = [timeOfDay,userPrecision,dbgLevel,tmpScale] 
         if (forcePoll || (changeConfig == [:]) || !changeConfig.containsKey(tid) || (changeConfig[tid] != configList)) { 
             data += [
@@ -2340,8 +2368,12 @@ def updateThermostatData() {
 
 		// it is possible that thermostatSummary indicated things have changed that we don't care about...
 		if (data != [:]) {
+        	data += [ thermostatTime:stat.thermostatTime ]
         	def DNI = [ app.id, stat.identifier ].join('.')
-        	def tstatName = (thermostatsWithNames && thermostatsWithNames.containsKey(DNI)) ? thermostatsWithNames[DNI] : 'noName'
+        	def tstatName = (thermostatsWithNames?.containsKey(DNI)) ? thermostatsWithNames[DNI] : null
+            if (tstatName == null) {
+                tstatName = getChildDevice(DNI)?.displayName		// better than displaying 'null' as the name
+            }
         	tstatNames += [tstatName]
 			collector[DNI] = [thermostatId:tid, data:data]
         }
@@ -3100,12 +3132,14 @@ private def String getTimestamp() {
 	}
 }
 
-private def getTimeOfDay() {
+private def getTimeOfDay(tid = null) {
 	def nowTime 
-    if(location.timeZone) {
-    	nowTime = new Date().format("HHmm", location.timeZone).toDouble()
+    if(atomicState.timeZone) {
+    	nowTime = new Date().format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
+    } else if (tid && atomicState.statLocation && atomicState.statLocation[tid]) {
+    	nowTime = new Date().format("HHmm", TimeZone.getTimeZone(atomicState.statLocation[tid].timeZone)).toInteger()
     } else {
-    	nowTime = new Date().format("HHmm").toDouble()
+    	nowTime = new Date().format("HHmm").toInteger()
     }
     LOG("getTimeOfDay() - nowTime = ${nowTime}", 4, null, "trace")
     if ( (nowTime < atomicState.sunriseTime) || (nowTime > atomicState.sunsetTime) ) {
@@ -3113,6 +3147,59 @@ private def getTimeOfDay() {
     } else {
     	return "day"
     }
+}
+
+// we'd prefer to use the timeZone that the thermostat says it is in, so long as ALL the thermostats agree
+// if thermostats don't have a timeZone, use the SmartThings location.timeZone
+// if ST location doesn't have a time zone, we're just going to have to use ST's "local time"
+private def getTimeZone() {
+	if ((atomicState.timeZone == null) || atomicState.forcePoll) {
+    	// default to the SmartThings location's timeZone (if there is one)
+		def myTimeZone = location?.timeZone ? location.timeZone.ID : null
+        def timeZones = []
+        settings.thermostats?.each {
+        	def tid = it.split(/\./).last()
+    		def statTimeZone = (atomicState.statLocation && atomicState.statLocation[tid]) ? atomicState.statLocation[tid].timeZone : null
+            if (statTimeZone != null) {
+            	LOG("thermostat ${tid}'s timeZone ID: ${statTimeZone}",4,null,'trace')
+            	// let's see how many timeZones we are using across all the thermostats
+        		if (!timeZones || (!timeZones.contains(statTimeZone))) timeZones += [statTimeZone]
+            	// if we have the Thermostat Location, use the timeZone from the thermostat
+        		if (myTimeZone != statTimeZone) myTimeZone = statTimeZone
+            }
+        }
+        if (timeZones.size() != 1) {
+        	// we have thermostats in more than one time zone - going to have to use location data every time
+            myTimeZone = null
+        }
+        if (myTimeZone != null) atomicState.timeZone = myTimeZone		// can't save the timeZone object, so we store the ID/Name
+    }
+    return atomicState.timeZone
+}
+
+private String getZipCode() {
+	// default to the SmartThings location's timeZone (if there is one)
+	String myZipCode = location?.zipCode
+	if ((atomicState.zipCode == null) || atomicState.forcePoll) {
+    	def zipCode = ''
+        def zipCodes = []
+        settings.thermostats?.each{
+        	def tid = it.split(/\./).last()
+            def statZipCode = (atomicState.statLocation && atomicState.statLocation[tid]) ? atomicState.statLocation[tid].postalCode : null
+            if (statZipCode != null) {
+            	// let's see how many postalCodes we are using across all the thermostats
+        		if (!zipCodes || (!zipCodes.contains(statZipCode))) zipCodes += [statZipCode]
+            	// if we have the Thermostat Location, use the postalCode from the thermostat
+        		if (myZipCode != statZipCode) myZipCode = statZipCode
+            }
+        }
+        if (zipCodes.size() != 1) {
+        	// we have thermostats in more than one postalCode - going to have to use location data every time
+            myZipCode = null
+        } 
+        if (atomicState.zipCode != null) atomicState.zipCode = myZipCode
+    }
+    return myZipCode
 }
 
 // Are we connected with the Ecobee service?
