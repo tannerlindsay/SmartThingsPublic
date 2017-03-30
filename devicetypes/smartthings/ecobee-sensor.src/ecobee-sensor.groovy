@@ -13,17 +13,15 @@
  *  for the specific language governing permissions and limitations under the License.
  * 
  *  See Changelog for change history
- *	0.10.1 - Tweaks to display decimal precision
- *	0.10.2 - Fixed so that Temperature shows in large font for Room/Thing List views
- *	0.10.3 - Added attributes/display of Climates this sensor is used in (TODO: ability to add/remove)
- *	0.10.4 - Can now add/delete sensor from a Program; device shows current Program (same as parent thermostat)
+ *
  *	1.0.0  - Preparation for General Release
  *	1.0.1  - Added Offline handling (power out, network down, etc.)
  *	1.0.2  - Changed handling of online/offline
+ *	1.0.3  - Added Health Check support
  *
  */
 
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -34,6 +32,7 @@ metadata {
 		capability "Motion Sensor"
 		capability "Refresh"
 		capability "Polling"
+        capability "Health Check"
 		
 		attribute "decimalPrecision", "number"
 		attribute "temperatureDisplay", "string"
@@ -46,6 +45,7 @@ metadata {
         attribute "vents", "string"
         attribute "SmartRoom", "string"
         attribute "currentProgramName", "string"
+        attribute "humidity", "string"
         
         command "noOp"					// these are really for internal use only
         command "enableSmartRoom"
@@ -84,8 +84,9 @@ metadata {
 			tileAttribute ("device.motion", key: "SECONDARY_CONTROL") {
                 attributeState "active", action:"noOp", nextState: "active", label:"Motion", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_motion.png"
 				attributeState "inactive", action: "noOp", nextState: "inactive", label:"No Motion", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_nomotion.png"
-            	attributeState "unknown", action: "noOp", label:"Offline", nextState: "unknown", icon: "https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_noconnection.png"
-           	 	attributeState "not supported", action: "noOp", nextState: "not supported", label: "N/A", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/notsupported_x.png"
+            	attributeState "unknown", action: "noOp", label:"Off\nline", nextState: "unknown", icon: "https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_noconnection.png"
+             	attributeState "offline", action: "noOp", label:"Off\nline", nextState: "offline", icon: "https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_noconnection.png"
+ 				attributeState "not supported", action: "noOp", nextState: "not supported", label: "N/A", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/notsupported_x.png"
             }
 		}
         
@@ -180,7 +181,7 @@ metadata {
 	}
 }
 
-def refresh() {
+void refresh() {
 	LOG( "Executing 'refresh' via parent", 2, this, "info")
 	parent.pollChildren(deviceId: device.currentValue('thermostatId'), child: null)		// we have to poll our Thermostat to get updated
 }
@@ -188,6 +189,16 @@ def refresh() {
 void poll() {
 	LOG( "Executing 'poll' via parent", 2, this, "info")
 	parent.pollChildren(deviceId: device.currentValue('thermostatId'), child: null)		// we have to poll our Thermostat to get updated
+}
+
+// Health Check will ping us based on the frequency we configure in Ecobee (Connect) (derived from poll & watchdog frequency)
+void ping() {
+	LOG( "Pinged - executing 'poll' via parent", 2, this, "info")
+   	parent.pollChildren(deviceId: device.currentValue('thermostatId'), child: null) 	// forcePoll
+}
+
+void updated() {
+	sendEvent(name: 'checkInterval', value: 3900, displayed: false, isStateChange: true)  // 65 minutes (we get forcePolled every 60 minutes
 }
 
 void noOp() {}
@@ -237,16 +248,18 @@ def generateEvent(Map results) {
                 }
                 
 				isChange = isStateChange(device, name, sendValue.toString())
-				if (isChange) event = [name: name, linkText: linkText, descriptionText: "Motion is ${sendValue}", handlerName: name, value: sendValue.toString(), isStateChange: true, displayed: true]
+				if (isChange) event = [name: name, linkText: linkText, descriptionText: "Motion is ${sendValue}", handlerName: name, value: sendValue, isStateChange: true, displayed: true]
 			} else if (name=='currentProgramName') {
             	isChange = isStateChange(device, name, sendValue)
                 if (isChange) {
                 	isConnected = (sendValue != 'Offline')		// update if it changes
 					event = [name: name, linkText: linkText, value: sendValue, descriptionText: 'Program is '+sendValue.replaceAll(':',''), isStateChange: true, displayed: true]
                 }
+            } else if (name=='checkInterval') {
+            	event = [name: name, value: sendValue, isStateChange: true, displayed: false]
             } else { // must be one of Home, Away, Sleep, vents, doors, windows, SmartRoom, decimalPrecision or thermostatId
 				isChange = isStateChange(device, name, sendValue)
-				if (isChange) event = [name: name, linkText: linkText, handlerName: name, value: sendValue, isStateChange: true, displayed: true]
+				if (isChange) event = [name: name, linkText: linkText, handlerName: name, value: sendValue, isStateChange: true, displayed: false]
             }
 			if (event != [:]) sendEvent(event)
 		}
