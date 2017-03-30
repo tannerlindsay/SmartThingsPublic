@@ -21,36 +21,18 @@
  * 	Date: 2015-12-23
  *
  *	Updates by Barry A. Burke (storageanarchy@gmail.com)
- *  Date: 2017-01-31
+ *  https://github.com/SANdood/Ecobee
  *
  *  See Changelog for change history 
  *
- * 	0.9.12 - Fix for setting custom Thermostat Programs (Comfort Settings)
- *	0.9.13 - Add attributes to indicate custom program names to child thermostats (smart1, smart2, etc)
- * 	0.10.1 - Massive overhaul for performance, efficiency, improved UI, enhanced functionality
- *	0.10.2 - Beta release of Barry's updated version
- *	0.10.3 - Added support for setVacationFanMinOnTime() and deleteVacation()
- *	0.10.4 - Fixed temperatureDisplay
- *	0.10.5 - Tuned up device notifications (icons, colors, etc.)
- *	0.10.6 - Changed outside temp to use Ecobee stock temperature backgroundColors
- *	0.10.7 - Fix heat/cool setpoint tiles
- *	0.10.8 - Added programsList attribute - list of available "climates" on this thermostat
- *  0.10.9 - Fixed double FtoC conversions
- *	0.10.10- holdEndsAt suppression
- *	0.10.11- Misc notification cleanup
- *	0.10.12- Fixed humiditySetpoint reporting
- *	0.10.13- More sendEvent message cleanup; hide all the locally generated events from the notification queue
- *	0.10.14- Fixed 'motion' message
- *	0.10.15- Fixed resumeProgram tile status'
- *	0.10.16- Changed Heat/Cooling Slider UI
- *	0.10.17- Work In Process
  *	1.0.0  - Preparation for General Release
  *  1.0.1  - Added support for Thermostat Offline from Ecobee Cloud
  *	1.0.2  - Fixed intermittent update of humidity
+ *  1.0.3  - Added Health Check support & Thermostat date/time display
  *
  */
 
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -71,8 +53,8 @@ metadata {
 		capability "Thermostat Heating Setpoint"
 		capability "Thermostat Mode"
 		capability "Thermostat Operating State"
-		capability "Thermostat Setpoint"
-            
+		capability "Thermostat Setpoint"   
+        capability "Health Check"
 
 		command "setTemperature"
         command "auxHeatOnly"
@@ -106,6 +88,7 @@ metadata {
 		attribute "thermostatSetpoint","number"
 		attribute "thermostatStatus","string"
         attribute "apiConnected","string"
+        attribute "ecobeeConnected", "string"
         
 		attribute "currentProgramName", "string"
         attribute "currentProgramId","string"
@@ -116,7 +99,7 @@ metadata {
         attribute "weatherSymbol", "string"        
         attribute "debugEventFromParent","string"
         attribute "logo", "string"
-        attribute "timeOfDate", "enum", ["day", "night"]
+        attribute "timeOfDay", "enum", ["day", "night"]
         attribute "lastPoll", "string"
         
 		attribute "equipmentStatus", "string"
@@ -151,6 +134,7 @@ metadata {
         attribute "fanMinOnTime", "number"
         attribute "programsList", "enum"
         attribute "thermostatOperatingStateDisplay", "string"
+        attribute "thermostatTime", "string"
 		
 		// attribute "debugLevel", "number"
 		
@@ -547,6 +531,12 @@ metadata {
         valueTile("fanMinOnTime", "device.fanMinOnTime", width: 1, height: 1, decoration: "flat") {
         	state "fanMinOnTime", /*"default",  action: "noOp", nextState: "default", */ label: 'Fan On\n${currentValue}m/hr'
         }
+        valueTile("tstatDate", "device.tstatDate", width: 1, height: 1, decoration: "flat") {
+        	state "default", /*"default",  action: "noOp", nextState: "default", */ label: '${currentValue}'
+        }
+        valueTile("tstatTime", "device.tstatTime", width: 1, height: 1, decoration: "flat") {
+        	state "default", /*"default",  action: "noOp", nextState: "default", */ label: '${currentValue}'
+        }
         standardTile("commandDivider", "device.logo", inactiveLabel: false, width: 4, height: 1, decoration: "flat") {
         	state "default", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/command_divider.png"			
         }    
@@ -569,7 +559,7 @@ metadata {
         	/* "operatingState", */  "equipmentState", "weatherIcon",  "refresh",  
             "currentProgramIcon", "weatherTemperature", "motionState", 
             "holdStatus", "fanMinOnTime", 
-            "oneBuffer", "commandDivider", "oneBuffer",
+            "tstatDate", "commandDivider", "tstatTime",
             "modeShow", "fanModeLabeled",  "resumeProgram", 
             'cooling',"coolSliderControl", "coolingSetpoint",
             'heating',"heatSliderControl", "heatingSetpoint",            
@@ -602,24 +592,30 @@ def parse(String description) {
 }
 
 def refresh() {
-	LOG("refresh() called")
+	LOG("refresh() called",2,null,'info')
 	poll()
 }
 
 void poll() {
-	LOG("Executing 'poll' using parent SmartApp (without child)")
+	LOG("Executing 'poll' using parent SmartApp (without child)", 2, null, 'info')
     parent.pollChildren(deviceId: getDeviceId(), child: null) // tell parent to just poll me silently -- can't pass child/this for some reason
 }
 
+// Health Check will ping us based on the frequency we configure in Ecobee (Connect) (derived from poll & watchdog frequency)
+def ping() {
+	LOG("Health Check ping - apiConnected: ${device.currentValue('apiConnected')}, ecobeeConnected: ${device.currentValue('ecobeeConnected')}, checkInterval: ${device.currentValue('checkInterval')} seconds",1,null,'warn')
+   	parent.pollChildren(deviceId: getDeviceId(), child: null) 	// forcePoll
+}
+
 def generateEvent(Map results) {
-	LOG("generateEvent(): parsing data $results", 4)
-    LOG("Debug level of parent: ${parent.settings?.debugLevel}", 4, null, "debug")
+	LOG("generateEvent(): parsing data ${results}", 4)
+    //LOG("Debug level of parent: ${parent.settings.debugLevel}", 4, null, "debug")
 	def linkText = getLinkText(device)
     def isMetric = wantMetric()
 
 	def updateTempRanges = false
-    def precision = device.currentValue("decimalPrecision")
-    if (!precision) precision = (tempScale == "C") ? 1 : 0
+    def precision = device.currentValue('decimalPrecision')
+    if (!precision) precision = (tempScale == 'C') ? 1 : 0
     Integer objectsUpdated = 0
 	
 	if(results) {
@@ -783,6 +779,26 @@ def generateEvent(Map results) {
 				case 'debugEventFromParent':
 					event = eventFront + [value: sendValue, descriptionText: "-> ${sendValue}", isStateChange: true, displayed: true]
 					break;
+                    
+                case 'thermostatTime':
+                // 2017-03-22 15:06:14
+                	String tstatDate = sendValue.take(4) + '\n' + sendValue.drop(5).take(5)
+                    String tstatTime = sendValue.drop(11).take(5)
+                    int hours = tstatTime.take(2).toInteger()
+                    int mins = tstatTime.drop(3).toInteger()
+                    if (hours < 12) {
+                    	if (hours==0) hours = 12
+                    	tstatTime = "${hours}" + tstatTime.drop(2) + 'am'
+                    } else {
+                    	if (hours==12) hours = 24
+                        tstatTime = "${hours-12}" + tstatTime.drop(2) + "pm"
+                    }
+                    if (isStateChange(device, 'tstatDate', tstatDate)) sendEvent(name: 'tstatDate', value: tstatDate, isStateChange: true, displayed: false)
+                    if (isStateChange(device, 'tstatTime', tstatTime)) sendEvent(name: 'tstatTime', value: tstatTime, isStateChange: true, displayed: false)
+                    if (isChange) event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
+                    objectsUpdated++
+                    break;
+                    
 				
 				// These are ones we don't need to display or provide descriptionText for (mostly internal or debug use)
 				case 'debugLevel':
@@ -815,6 +831,8 @@ def generateEvent(Map results) {
                 case 'programsList':
                 case 'holdEndsAt':
                 case 'temperatureScale':
+                case 'checkInterval':
+                case 'ecobeeConnected':
 					if (isChange) event = eventFront +  [value: sendValue, isStateChange: true, displayed: false]
 					break;
 				
@@ -1020,7 +1038,7 @@ void resumeProgram(resumeAll=true) {
 		LOG("resumeProgram() - No current hold", 2, null, 'info')
         sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
 		return
-	} else if (thermostatHold == "vacation") {
+	} else if (thermostatHold == "vacation") { // this shouldn't happen anymore - button changes to Cancel when in Vacation mode
 		LOG("resumeProgram() - Cannot resume from ${thermostatHold} hold", 2, null, "error")
         sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
 		return
@@ -1036,11 +1054,11 @@ void resumeProgram(resumeAll=true) {
         sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
         sendEvent(name: "holdStatus", value: '', descriptionText: 'Hold finished', displayed: true, isStateChange: true)
         runIn(5, poll, [overwrite: true])
-        LOG("resumeProgram() - Finished", 2)
+        LOG("resumeProgram() - Finished", 2,null,'info')
 	} else {
 		sendEvent(name: "thermostatStatus", value: "Resume failed", description:statusText, displayed: false)
         runIn(5, poll, [overwrite: true])
-		LOG("Error resumeProgram() check parent.resumeProgram(this, ${deviceId}, ${resumeAll})", 2, null, "error")
+		LOG("Error resumeProgram() check parent.resumeProgram(this, ${deviceId}, ${resumeAll})", 1, null, "error")
 	}
 
 	generateSetpointEvent()
@@ -1563,29 +1581,50 @@ def generateStatusEvent() {
 
 	if (mode == "heat") {
 //		if (temperature >= heatingSetpoint) {
-		if (operatingState == "fan only") {
-        	statusText = "Fan Only"
-        } else if (operatingState != "heating") {
-			statusText = "Idle (Heat)"
+		if (operatingState == 'fan only') {
+        	statusText = 'Fan Only'
+        } else if (operatingState.startsWith('heating')) {
+			statusText = 'Heating '
+            if (operatingState.contains('sma')) {
+            	statusText += '(Smart Recovery)'
+            } else {
+            	statusText += "to ${heatingSetpoint}°"
+            }
 		} else {
-			statusText = "Heating to ${heatingSetpoint}°"
+        	// asert operatingState == 'idle'
+			statusText = "Heating at ${heatingSetpoint}°"
 		}
 	} else if (mode == "cool") {
 //		if (temperature <= coolingSetpoint) {
-		if (operatingState == "fan only") {
-        	statusText = "Fan Only"
-		} else if (operatingState != "cooling") {
-			statusText = "Idle (Cool)"
+		if (operatingState == 'fan only') {
+        	statusText = 'Fan Only'
+		} else if (operatingState.startsWith('cooling')) {
+        	statusText = 'Cooling '
+            if (operatingState.contains('sma')) {
+            	statusText += '(Smart Recovery)'
+            } else {
+            	statusText += "to ${coolingSetpoint}°"
+            }
 		} else {
-			statusText = "Cooling to ${coolingSetpoint}°"
+			statusText = "Cooling at ${coolingSetpoint}°"
 		}
-	} else if (mode == "auto") {
-		if (operatingState == "fan only") {
-        	statusText = "Fan Only"
-    	} else if (operatingState == "heating") {
-        	statusText = "Heating to ${heatingSetpoint}° (Auto)"
-        } else if (operatingState == "cooling") {
-        	statusText = "Cooling to ${coolingSetpoint}° (Auto)"
+	} else if (mode == 'auto') {
+		if (operatingState == 'fan only') {
+        	statusText = 'Fan Only'
+    	} else if (operatingState.startsWith('heating')) {
+        	statusText = 'Heating '
+            if (operatingState.contains('sma')) {
+            	statusText += '(Smart Recovery/Auto)'
+            } else {
+            	statusText += "to ${heatingSetpoint}° (Auto)"
+            }
+        } else if (operatingState.startsWith('cooling')) {
+        	statusText = 'Cooling '
+            if (operatingState.contains('sma')) { 
+            	statusText += '(Smart Recovery/Auto)'
+        	} else {
+            	statusText += "to ${coolingSetpoint}° (Auto)"
+            }
         } else {
 			statusText = "Idle (Auto ${heatingSetpoint}°-${coolingSetpoint}°)"
         }
