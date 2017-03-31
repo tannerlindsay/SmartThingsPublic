@@ -34,12 +34,13 @@
  *	1.0.3 -  Updates to thermostat->Ecobee Cloud connection handling
  *	1.0.4 -	 Added Health Check support for Thermostat device
  *	1.0.5 -	 Beginning of support for thermostats in different timeZones than SmartThings hub
+ *	1.0.6 -  Fixed zipCode handling when thermostat does not have a postalCode
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.5" }
+def getVersionNum() { return "1.0.6" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -807,7 +808,7 @@ def initialize() {
     getZipCode()		// and atomicState.zipCode (because atomicState.forcePoll is true)
     
     // get sunrise/sunset for the location of the thermostats (prefers thermostat.location.postalCode)
-    def sunriseAndSunset = atomicState.zipCode ? getSunriseAndSunset(zipCode: atomicState.zipCode) : getSunRiseAndSunset()
+    def sunriseAndSunset = (atomicState.zipCode != null) ? getSunriseAndSunset(zipCode: atomicState.zipCode) : getSunRiseAndSunset()
     LOG("sunriseAndSunset == ${sunriseAndSunset}")
     if(atomicState.timeZone) {
         atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
@@ -3181,24 +3182,23 @@ private String getZipCode() {
 	// default to the SmartThings location's timeZone (if there is one)
 	String myZipCode = location?.zipCode
 	if ((atomicState.zipCode == null) || atomicState.forcePoll) {
-    	def zipCode = ''
         def zipCodes = []
         settings.thermostats?.each{
-        	def tid = it.split(/\./).last()
-            def statZipCode = (atomicState.statLocation && atomicState.statLocation[tid]) ? atomicState.statLocation[tid].postalCode : null
-            if (statZipCode != null) {
+        	String tid = it.split(/\./).last()
+            String statZipCode = (atomicState.statLocation && atomicState.statLocation[tid]) ? atomicState.statLocation[tid].postalCode : ''
+            if (statZipCode != '') {
             	// let's see how many postalCodes we are using across all the thermostats
         		if (!zipCodes || (!zipCodes.contains(statZipCode))) zipCodes += [statZipCode]
             	// if we have the Thermostat Location, use the postalCode from the thermostat
         		if (myZipCode != statZipCode) myZipCode = statZipCode
             }
         }
-        if (zipCodes.size() != 1) {
+        if (zipCodes.size() > 1) {
         	// we have thermostats in more than one postalCode - going to have to use location data every time
             myZipCode = null
         } 
-        if (atomicState.zipCode != null) atomicState.zipCode = myZipCode
     }
+    atomicState.zipCode = myZipCode
     return myZipCode
 }
 
