@@ -29,10 +29,11 @@
  *  1.0.1  - Added support for Thermostat Offline from Ecobee Cloud
  *	1.0.2  - Fixed intermittent update of humidity
  *  1.0.3  - Added Health Check support & Thermostat date/time display
+ *	1.0.4  - Fixed "Auto" as default program
  *
  */
 
-def getVersionNum() { return "1.0.3" }
+def getVersionNum() { return "1.0.4" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -361,6 +362,7 @@ metadata {
 			state "Home", action:"noOp", label: 'Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png"
 			state "Away", action:"noOp", label: 'Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png"
             state "Sleep", action:"noOp", label: 'Sleep', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue.png"
+            state "Auto", action:"noOp", label: 'Auto', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
             state "Auto Away", action:"noOp", label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png" // Fix to auto version
             state "Auto Home", action:"noOp", label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png" // Fix to auto
             state "Hold", action:"noOp", label: "Hold Activated", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
@@ -1033,8 +1035,8 @@ void setCoolingSetpoint(Double setpoint) {
 }
 
 void resumeProgram(resumeAll=true) {
-	def thermostatHold = device.currentValue("thermostatHold")
-	if (thermostatHold == "") {
+	String thermostatHold = device.currentValue("thermostatHold")
+	if (thermostatHold == '') {
 		LOG("resumeProgram() - No current hold", 2, null, 'info')
         sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
 		return
