@@ -35,12 +35,13 @@
  *	1.0.4 -	 Added Health Check support for Thermostat device
  *	1.0.5 -	 Beginning of support for thermostats in different timeZones than SmartThings hub
  *	1.0.6 -  Fixed zipCode handling when thermostat does not have a postalCode
+ *	1.0.7 -  Rework Climates handling for Hold: (Auto)
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.6" }
+def getVersionNum() { return "1.0.7" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -825,7 +826,7 @@ def initialize() {
 	atomicState.timeOfDay = getTimeOfDay()
 	    
     // Setup initial polling and determine polling intervals
-	atomicState.pollingInterval = -1 	// getPollingInterval()
+	atomicState.pollingInterval = getPollingInterval()
     atomicState.watchdogInterval = 15	// In minutes: 14/28/42/56<- scheduleWatchdog should refresh tokens with 4 minutes to spare
     atomicState.reAttemptInterval = 15 	// In seconds
 	
@@ -2016,18 +2017,18 @@ def updateThermostatData() {
 		// EVENTS
 		// Determine if an Event is running, find the first running event (only changes when thermostat object is updated)
     	def runningEvent = [:]
-        def currentClimateName = ''
-		def currentClimateId = ''
-        def currentClimate = ''
+        String currentClimateName = ''
+		String currentClimateId = ''
+        String currentClimate = ''
         def currentFanMode = ''
         def climatesList = []
         def statMode = statSettings.hvacMode
         def fanMinOnTime = statSettings.fanMinOnTime
 		
 		// what program is supposed to be running now?
-        def scheduledClimateId = 'unknown'
-		def scheduledClimateName = 'Unknown'
-        def schedClimateRef = ''
+        String scheduledClimateId = 'unknown'
+		String scheduledClimateName = 'Unknown'
+        def schedClimateRef = null
         if (program) {
         	scheduledClimateId = program.currentClimateRef 
         	schedClimateRef = program.climates.find { it.climateRef == scheduledClimateId }
@@ -2070,35 +2071,41 @@ def updateThermostatData() {
             holdEndsAt = fixDateTimeString( runningEvent.endDate, runningEvent.endTime, stat.thermostatTime)
 			thermostatHold = runningEvent.type
             LOG("Found a running Event: ${runningEvent}", 4) 
-            def tempClimateRef = runningEvent.holdClimateRef ? runningEvent.holdClimateRef : ''
-        	if ( runningEvent.type == 'hold' ) {
-            	if (tempClimateRef != '') {
-					currentClimate = (program.climates.find { it.climateRef == tempClimateRef }).name
-               		currentClimateName = 'Hold: ' + currentClimate
-                } else if (runningEvent.name == 'auto') {		// Handle the "auto" climates (includes fan on override, and maybe the Smart Recovery?)
-                    if ((statMode == "heat") && (runningEvent.fan != schedClimateRef.heatFan)) {
-                       	currentClimateName = 'Hold: Fan'
-                    } else if ((statMode == 'cool') && (runningEvent.fan != schedClimateRef.coolFan)) {
-                    	currentClimateName = 'Hold: Fan'
-                    } else {
-                        currentClimateName = 'Auto'
-                    }
-                } else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
-                	currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
-                }// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
-			} else if (runningEvent.type == 'vacation' ) {
-               	currentClimateName = 'Vacation'
-                fanMinOnTime = runningEvent.fanMinOnTime
-            } else if (runningEvent.type == 'quickSave' ) {
-               	currentClimateName = 'Quick Save'                
-            } else if (runningEvent.type == 'autoAway' ) {
-             	currentClimateName = 'Auto Away'
-            } else if (runningEvent.type == 'autoHome' ) {
-               	currentClimateName = 'Auto Home'
-            } else {                
-               	currentClimateName = runningEvent.type
+            String tempClimateRef = runningEvent.holdClimateRef ? runningEvent.holdClimateRef : ''
+            switch (runningEvent.type) {
+            	case 'hold':
+            		if (tempClimateRef != '') {
+						currentClimate = (program.climates.find { it.climateRef == tempClimateRef }).name
+               			currentClimateName = 'Hold: ' + currentClimate
+                	} else if (runningEvent.name == 'auto') {		// Handle the "auto" climates (includes fan on override, and maybe the Smart Recovery?)
+                    	if ((statMode == "heat") && (runningEvent.fan != schedClimateRef.heatFan)) {
+                       		currentClimateName = 'Hold: Fan'
+                    	} else if ((statMode == 'cool') && (runningEvent.fan != schedClimateRef.coolFan)) {
+                    		currentClimateName = 'Hold: Fan'
+                    	} else {
+                        	currentClimateName = 'Auto'
+                    	}
+                	} else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
+                		currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
+                	}// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
+                    break;
+                case 'vacation':
+               		currentClimateName = 'Vacation'
+                	fanMinOnTime = runningEvent.fanMinOnTime
+                    break;
+                case 'quickSave':
+               		currentClimateName = 'Quick Save'
+                    break;
+                case 'autoAway':
+             		currentClimateName = 'Auto Away'
+                	break;
+                case 'autoHome':
+               		currentClimateName = 'Auto Home'
+                    break;
+            	default:                
+               		currentClimateName = runningEvent.type
+                    break;
             }
-            // currentClimateId = runningEvent.holdClimateRef
 			currentClimateId = tempClimateRef
 		} else if (isConnected) {
 			if (scheduledClimateId) {
