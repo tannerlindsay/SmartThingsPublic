@@ -20,8 +20,9 @@
  * 0.1.7 - Extended to support the inverse: Ecobee Program change (including Vacation) can change ST Mode or run Routine
  * 1.0.0 - Final preparation for General Release
  * 1.0.1 - Updated LOG and setup for consistency
+ * 1.0.2 - Fixed Ecobee Program changes when using Permanent/Indefinite or Default holdType
  */
-def getVersionNum() { return "1.0.1" }
+def getVersionNum() { return "1.0.2" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -256,7 +257,7 @@ def changeSTHandler(evt) {
             	// trick to avoid multiple calls if more than 1 thermostat - they could change simultaneously or within the next pollCycle
                 // to avoid this delayed response, assign to only one thermostat
                 parent.poll()
-            	runIn(15, changeMode, [overwrite: true]) 
+            	runIn(5, changeMode, [overwrite: true]) 
             }	
         } else {
         	LOG("Executing Routine ${settings.runAction} because ${state.ecobeeThatChanged} changed to ${state.ecobeeNewProgram}",2,null,'info')
@@ -271,10 +272,10 @@ def changeSTHandler(evt) {
 }
 
 def changeMode() {
-	if (settings.runMode != location.mode) { 	// only if we aren't already in the specified Mode
+//	if (settings.runMode != location.mode) { 	// only if we aren't already in the specified Mode
 		if (state.ecobeeThatChanged) sendNotificationEvent("Changing Mode to ${settings.runMode} because ${state.ecobeeThatChanged} changed to ${state.ecobeeNewProgram}")
     	location.mode(settings.runMode)
-    }
+//    }
     state.ecobeeThatChanged = null
 }
 
@@ -307,7 +308,7 @@ def changeProgramHandler(evt) {
         	LOG("Resuming Program for ${stat}", 4, null, 'trace')
             if (stat.currentValue("thermostatHold") == 'hold') {
             	def scheduledProgram = stat.currentValue("scheduledProgram")
-        		stat.resumeProgram(true) // resumeAll to get back to the schedules program
+        		stat.resumeProgram(true) // resumeAll to get back to the scheduled program
 				sendNotificationEvent("And I resumed the scheduled ${scheduledProgram} program on ${stat}.")
             }
         } else {
@@ -322,11 +323,9 @@ def changeProgramHandler(evt) {
                 }
             } else if (thermostatHold == 'hold') {
                 if (stat.currentValue('scheduledProgram') == state.programParam) {
-                    if (state.programParam == 'nextTransition') {
-                    	stat.resumeProgram(true)	// resumeAll to get back to the originally scheduled program
-                        sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}.")
-                        done = true
-                    }
+                    stat.resumeProgram(true)	// resumeAll to get back to the originally scheduled program
+                    sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}.")
+                    done = true
                 }
             }
             if (!done) {    
