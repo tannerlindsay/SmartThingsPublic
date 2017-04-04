@@ -36,12 +36,13 @@
  *	1.0.5 -	 Beginning of support for thermostats in different timeZones than SmartThings hub
  *	1.0.6 -  Fixed zipCode handling when thermostat does not have a postalCode
  *	1.0.7 -  Rework Climates handling for Hold: (Auto)
+ *	1.0.8 -  Cleaned up handling of program Hold: events & commands
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.7" }
+def getVersionNum() { return "1.0.8" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -381,7 +382,7 @@ def debugDashboardPage() {
 def pollChildrenPage() {
 	LOG("=====> pollChildrenPage() entered.", 5)
     atomicState.forcePoll = true // Reset to force the poll to happen
-	pollChildren(null)
+	pollChildren()
     
 	dynamicPage(name: "pollChildrenPage", title: "") {
     	section() {
@@ -1215,7 +1216,7 @@ def updateLastPoll(Boolean isScheduled=false) {
 
 def poll() {		
     if (debugLevel(4)) LOG("poll() - Running at ${getTimestamp()} (epic: ${now()})", 4, null, "trace")   
-	pollChildren(null,null) // Poll ALL the children at the same time for efficiency    
+	pollChildren() // Poll ALL the children at the same time for efficiency    
 }
 
 // Called by scheduled() event handler
@@ -1232,8 +1233,8 @@ def pollInit() {
 	runIn(2, pollChildren, [overwrite: true]) 		// Hit the ecobee API for update on all thermostats, in 2 seconds
 }
 
-def pollChildren(deviceId = null, child=null) {  
-	LOG("pollChildren() - deviceId ${deviceId} child ${child}", 4, child, 'trace')
+def pollChildren(deviceId = null) {  
+	LOG("pollChildren() - deviceId ${deviceId}", 4, child, 'trace')
     def forcePoll = deviceId || atomicState.forcePoll ? true : false
     atomicState.forcePoll = forcePoll
 
@@ -1241,12 +1242,12 @@ def pollChildren(deviceId = null, child=null) {
     
 	if(apiConnected() == "lost") {
     	// Possibly a false alarm? Check if we can update the token with one last fleeting try...
-        LOG("apiConnected() == lost, try to do a recovery, else we are done...", 3, child, "debug")
+        LOG("apiConnected() == lost, try to do a recovery, else we are done...", 3, null, "debug")
         if( refreshAuthToken() ) { 
         	// We are back in business!
-			LOG("pollChildren() - Was able to recover the lost connection. Please ignore any notifications received.", 1, child, "warn")
+			LOG("pollChildren() - Was able to recover the lost connection. Please ignore any notifications received.", 1, null, "warn")
         } else {        
-			LOG("pollChildren() - Unable to schedule handlers do to loss of API Connection. Please ensure you are authorized.", 1, child, "error")
+			LOG("pollChildren() - Unable to schedule handlers do to loss of API Connection. Please ensure you are authorized.", 1, null, "error")
 			return false
 		}
 	}
@@ -1255,22 +1256,22 @@ def pollChildren(deviceId = null, child=null) {
     scheduleWatchdog(null, true)    
     
     if (settings.thermostats?.size() < 1) {
-    	LOG("pollChildren() - Nothing to poll as there are no thermostats currently selected", 1, child, "warn")
+    	LOG("pollChildren() - Nothing to poll as there are no thermostats currently selected", 1, null, "warn")
 		return true
     }    
 
     // Check if anything has changed in the thermostatSummary (really don't need to call EcobeeAPI if it hasn't).
-    String thermostatsToPoll = forcePoll ? getChildThermostatDeviceIdsString() : deviceId ? deviceId : getChildThermostatDeviceIdsString()
+    String thermostatsToPoll = (deviceId!=null) ? deviceId : getChildThermostatDeviceIdsString()
     
     boolean somethingChanged = forcePoll ? true : checkThermostatSummary(thermostatsToPoll)
     if (!forcePoll) thermostatsToPoll = atomicState.changedThermostatIds
     
     String preText = getDebugLevel() <= 2 ? '' : 'pollChildren() - ' 
     if (forcePoll || somethingChanged) {
-        LOG("${preText}Requesting updates for thermostat${thermostatsToPoll.contains(',')?'s':''} ${thermostatsToPoll}${forcePoll?' (forced)':''}", 2, child, 'trace')
+        LOG("${preText}Requesting updates for thermostat${thermostatsToPoll.contains(',')?'s':''} ${thermostatsToPoll}${forcePoll?' (forced)':''}", 2, null, 'trace')
     	pollEcobeeAPI(thermostatsToPoll)  // This will update the values saved in the state which can then be used to send the updates
 	} else {   	 
-        LOG(preText+'No updates...', 2, child, 'trace')
+        LOG(preText+'No updates...', 2, null, 'trace')
         return true
     }
     
@@ -2552,7 +2553,7 @@ def resumeProgram(child, String deviceId, resumeAll=true) {
     // def currentHoldType = child.currentValue("thermostatHold")		// TODO: If we are in a vacation hold, need to delete the vacation
     // theoretically, if currentHoldType == "", we can skip all of this...theoretically
     
-    LOG("resumeProgram() - atomicState.previousHVACMode = ${previousHVACMode} current (${currentHVACMode})   atomicState.previousFanMinOnTime = ${previousFanMinOnTime} current (${currentFanMinOnTime})", 3, child, 'info')	
+    LOG("resumeProgram() - atomicState.previousHVACMode = ${previousHVACMode} current (${currentHVACMode}) atomicState.previousFanMinOnTime = ${previousFanMinOnTime} current (${currentFanMinOnTime})", 3, child, 'info')	
     if ((previousHVACMode != null) && (currentHVACMode != previousHVACMode)) {
     	// Need to reset the HVAC Mode back to the previous state
         if (currentHVACMode == "off") { atomicState.offFanModeOn = false }
@@ -2678,15 +2679,8 @@ def setHold(child, heating, cooling, deviceId, sendHoldType=null, fanMode="", ex
     if (extraParams != []) {
     	tstatSettings << extraParams
     }                
-    
-	def jsonRequestBody 
-    if (sendHoldType) {
-    	jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":[{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '","holdType":"' + sendHoldType + '"}}]}'
-	} else {
-    	jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":[{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '"}}]}'
-    }
-    //      			   {"selection":{"selectionType":"thermostats","selectionMatch":"XXX"},             "functions":[{"type":"setHold","params":{"coolHoldTemp":"730","heatHoldTemp":"510","holdType":"nextTransition"}}],}
-	//def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '","includeRuntime":true},"functions": [{ "type": "setHold", "params": { "coolHoldTemp": '+c+',"heatHoldTemp": '+h+', "holdType": '+sendHoldType+' } } ]}'
+    def theHoldType = sendHoldType ? sendHoldType : whatHoldType()
+	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":[{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '","holdType":"' + theHoldType + '"}}]}'
     LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)
     
 	def result = sendJson(child, jsonRequestBody)
@@ -2752,11 +2746,10 @@ def setFanMode(child, fanMode, deviceId, sendHoldType=null) {
 		atomicState.circulateFanModeOn = false    
         atomicState.offFanModeOn = false
         thermostatSettings = ''
-        thermostatFunctions = '{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '","holdType":"' + theHoldType + '","fan":"'+fanMode+'","isTemperatureAbsolute":false,"isTemperatureRelative":false}}'
+        thermostatFunctions = '{"type":"setHold","params":{"coolHoldTemp":"'+c+'","heatHoldTemp":"'+h+'","holdType":"'+theHoldType+'","fan":"'+fanMode+'","isTemperatureAbsolute":false,"isTemperatureRelative":false}}'
     }    
 	
-    // {"selection":{"selectionType":"thermostats","selectionMatch":"312989153500"},"functions":[{"type":"setHold","params":{"coolHoldTemp":"73","heatHoldTemp":"66","holdType":"nextTransition","fan":"circulate","isTemperatureAbsolute":false,"isTemperatureRelative":false}}],"thermostat":{"settings":{"fanMinOnTime":15}}}
-	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
+	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
     LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)
     
 	def result = sendJson(child, jsonRequestBody)
@@ -2779,13 +2772,9 @@ def setProgram(child, program, String deviceId, sendHoldType=null) {
 	LOG("setProgram() - climateRef = {$climateRef}", 4, child)
 	
     if (climate == null) { return false }
+    def theHoldType = sendHoldType ? sendHoldType : whatHoldType()
     
-	def jsonRequestBody
-    if (sendHoldType) {
-    	jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+sendHoldType+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
-    } else {
-    	jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
-    }
+	def jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+theHoldType+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
 
     LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)    
 	def result = sendJson(child, jsonRequestBody)	
@@ -2983,7 +2972,7 @@ private def getSmartThingsClientId() {
     }
 }
 
-private def LOG(message, level=3, child=null, logType='debug', event=false, displayEvent=true) {
+private def LOG(message, level=3, child=null, String logType='debug', event=false, displayEvent=true) {
 	def dbgLevel = debugLevel(level)
     if (!dbgLevel) return 		// let's not waste CPU cycles if we don't have to...
     
@@ -2991,7 +2980,7 @@ private def LOG(message, level=3, child=null, logType='debug', event=false, disp
     def logTypes = ['error', 'debug', 'info', 'trace', 'warn']
     
     if(!logTypes.contains(logType)) {
-    	log.error "LOG() - Received logType (${logType}) which is not in the list of allowed types"
+    	log.error "LOG() - Received logType (${logType}) which is not in the list of allowed types ${logTypes}, message: ${message}, level: ${level}"
         if (event && child) { debugEventFromParent(child, "LOG() - Invalid logType ${logType}") }
         logType = 'debug'
     }
@@ -3314,9 +3303,9 @@ def getAvailablePrograms(thermostat) {
 }
 
 private def whatHoldType() {
-	def sendHoldType = settings.holdType ? (settings.holdType=="Temporary" || settings.holdType=="Until Next Program")? "nextTransition" : (settings.holdType=="Permanent" || settings.holdType=="Until I Change")? "indefinite" : "indefinite" : "indefinite"
+	def myHoldType = getHoldType()
+	def sendHoldType = (myHoldType=='Until Next Program' || myHoldType=='Temporary') ? 'nextTransition' : (( myHoldType=='Until I Change' || myHoldType=='Permanent') ? 'indefinite' : 'indefinite')
 	// LOG("Entered whatHoldType() with ${sendHoldType}  settings.holdType == ${settings.holdType}")
-	 
     return sendHoldType
 }
 
