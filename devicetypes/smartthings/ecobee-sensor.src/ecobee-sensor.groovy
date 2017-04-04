@@ -18,10 +18,11 @@
  *	1.0.1  - Added Offline handling (power out, network down, etc.)
  *	1.0.2  - Changed handling of online/offline
  *	1.0.3  - Added Health Check support
+ *	1.0.4  - Revised poll/refresh/ping commands
  *
  */
 
-def getVersionNum() { return "1.0.3" }
+def getVersionNum() { return "1.0.4" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -183,18 +184,18 @@ metadata {
 
 void refresh() {
 	LOG( "Executing 'refresh' via parent", 2, this, "info")
-	parent.pollChildren(deviceId: device.currentValue('thermostatId'), child: null)		// we have to poll our Thermostat to get updated
+	parent.pollChildren(device.currentValue('thermostatId'))		// we have to poll our Thermostat to get updated
 }
 
 void poll() {
 	LOG( "Executing 'poll' via parent", 2, this, "info")
-	parent.pollChildren(deviceId: device.currentValue('thermostatId'), child: null)		// we have to poll our Thermostat to get updated
+	parent.pollChildren(device.currentValue('thermostatId'))		// we have to poll our Thermostat to get updated
 }
 
 // Health Check will ping us based on the frequency we configure in Ecobee (Connect) (derived from poll & watchdog frequency)
 void ping() {
 	LOG( "Pinged - executing 'poll' via parent", 2, this, "info")
-   	parent.pollChildren(deviceId: device.currentValue('thermostatId'), child: null) 	// forcePoll
+   	parent.pollChildren(device.currentValue('thermostatId')) 	// forcePoll
 }
 
 void updated() {
