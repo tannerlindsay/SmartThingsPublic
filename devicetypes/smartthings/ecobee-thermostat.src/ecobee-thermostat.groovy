@@ -30,10 +30,11 @@
  *	1.0.2  - Fixed intermittent update of humidity
  *  1.0.3  - Added Health Check support & Thermostat date/time display
  *	1.0.4  - Fixed "Auto" as default program
+ *	1.0.5  - Fixed handling of resumeProgram and setThermostatProgram
  *
  */
 
-def getVersionNum() { return "1.0.4" }
+def getVersionNum() { return "1.0.5" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -599,14 +600,14 @@ def refresh() {
 }
 
 void poll() {
-	LOG("Executing 'poll' using parent SmartApp (without child)", 2, null, 'info')
-    parent.pollChildren(deviceId: getDeviceId(), child: null) // tell parent to just poll me silently -- can't pass child/this for some reason
+	LOG("Executing 'poll' using parent SmartApp", 2, null, 'info')
+    parent.pollChildren(getDeviceId()) // tell parent to just poll me silently -- can't pass child/this for some reason
 }
 
 // Health Check will ping us based on the frequency we configure in Ecobee (Connect) (derived from poll & watchdog frequency)
 def ping() {
 	LOG("Health Check ping - apiConnected: ${device.currentValue('apiConnected')}, ecobeeConnected: ${device.currentValue('ecobeeConnected')}, checkInterval: ${device.currentValue('checkInterval')} seconds",1,null,'warn')
-   	parent.pollChildren(deviceId: getDeviceId(), child: null) 	// forcePoll
+   	parent.pollChildren(getDeviceId()) 	// forcePoll just me
 }
 
 def generateEvent(Map results) {
@@ -1035,36 +1036,40 @@ void setCoolingSetpoint(Double setpoint) {
 }
 
 void resumeProgram(resumeAll=true) {
-	String thermostatHold = device.currentValue("thermostatHold")
+	resumeProgramInternal(resumeAll)
+}
+
+def resumeProgramInternal(resumeAll=true) {
+	def result = true
+    
+	String thermostatHold = device.currentValue('thermostatHold')
 	if (thermostatHold == '') {
-		LOG("resumeProgram() - No current hold", 2, null, 'info')
-        sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
-		return
-	} else if (thermostatHold == "vacation") { // this shouldn't happen anymore - button changes to Cancel when in Vacation mode
-		LOG("resumeProgram() - Cannot resume from ${thermostatHold} hold", 2, null, "error")
-        sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
-		return
+		LOG('resumeProgram() - No current hold', 2, null, 'info')
+        sendEvent(name: 'resumeProgram', value: 'resume', descriptionText: 'resumeProgram is done', displayed: false, isStateChange: true)
+		return result
+	} else if (thermostatHold =='vacation') { // this shouldn't happen anymore - button changes to Cancel when in Vacation mode
+		LOG('resumeProgram() - Cannot resume from Vacation hold', 2, null, 'error')
+        sendEvent(name: 'resumeProgram', value: 'resume', descriptionText: 'resumeProgram is done', displayed: false, isStateChange: true)
+		return false
 	} else {
 		LOG("resumeProgram() - Hold type is ${thermostatHold}", 4)
 	}
 	
-	sendEvent(name: "thermostatStatus", value: "Resuming schedule...", /* description: statusText, */ displayed: false)
+	sendEvent(name: 'thermostatStatus', value: 'Resuming scheduled Program...', displayed: false)
 	def deviceId = getDeviceId()
 	if (parent.resumeProgram(this, deviceId, resumeAll)) {
-		sendEvent(name: "thermostatStatus", value: "Setpoint updating...", /* description: statusText, */ displayed: false)
-        if (resumeAll) sendEvent(name: 'currentProgramName', value: "${device.currentValue('scheduledProgramName')}", displayed: false)
+		sendEvent(name: 'thermostatStatus', value: 'Program updating...', displayed: false)
+        if (resumeAll) generateProgramEvent(device.currentValue('scheduledProgramName'))
         sendEvent(name: "resumeProgram", value: "resume", descriptionText: "resumeProgram is done", displayed: false, isStateChange: true)
         sendEvent(name: "holdStatus", value: '', descriptionText: 'Hold finished', displayed: true, isStateChange: true)
-        runIn(5, poll, [overwrite: true])
-        LOG("resumeProgram() - Finished", 2,null,'info')
+        LOG("resumeProgram(${resumeAll}) - succeeded", 2,null,'info')
 	} else {
-		sendEvent(name: "thermostatStatus", value: "Resume failed", description:statusText, displayed: false)
-        runIn(5, poll, [overwrite: true])
-		LOG("Error resumeProgram() check parent.resumeProgram(this, ${deviceId}, ${resumeAll})", 1, null, "error")
+		sendEvent(name: "thermostatStatus", value: "Resume Program failed..", description:statusText, displayed: false)
+		LOG("resumeProgram() - failed (parent.resumeProgram(this, ${deviceId}, ${resumeAll}))", 1, null, "error")
+        result = false
 	}
-
-	generateSetpointEvent()
-	generateStatusEvent()    
+    runIn(5, poll, [overwrite: true])
+    return result
 }
 
 void cancelVacation() {
@@ -1078,32 +1083,28 @@ def fanModes() {
 }
 */
 
-def generateQuickEvent(name, value) {
-	generateQuickEvent(name, value, 0)
-}
+//def generateQuickEvent(name, value) {
+//	generateQuickEvent(name, value, 0)
+//}
 
-def generateQuickEvent(name, value, pollIn) {
+def generateQuickEvent(String name, String value, Integer pollIn=0) {
 	sendEvent(name: name, value: value, displayed: false)
-    if (pollIn > 0) { runIn(pollIn, "poll", [overwrite: true]) }
+    if (pollIn > 0) { runIn(pollIn, 'poll', [overwrite: true]) }
 }
 
 void setThermostatMode(String value) {
 	// 	"emergencyHeat" "heat" "cool" "off" "auto"
     
-    if (value=="emergency" || value=="emergencyHeat") { value = "auxHeatOnly" }    
-	LOG("setThermostatMode(${value})", 5)
-	generateQuickEvent("thermostatMode", value)
+    if (value=='emergency' || value=='emergencyHeat') { value = 'auxHeatOnly' }    
+	LOG("setThermostatMode(${value})", 5)	
 
     def deviceId = getDeviceId()
 	if (parent.setMode(this, value, deviceId)) {
-		runIn(5, poll, [overwrite: true])
+    	generateQuickEvent('thermostatMode', value, 5)
+		LOG("Success changing thermostat mode to ${value}",2,null,'info')
 	} else {
-		LOG("Error setting new mode to ${value}.", 1, null, "error")
-		def currentMode = device.currentValue("thermostatMode")
-		generateQuickEvent("thermostatMode", currentMode) // reset the tile back
+		LOG("Failed to set thermostat mode to ${value}.", 1, null, 'error')
 	}
-	generateSetpointEvent()
-	generateStatusEvent()
 }
 
 void off() {
@@ -1143,7 +1144,7 @@ void auto() {
 }
 
 // Handle Comfort Settings
-void setThermostatProgram(program, holdType=null) {
+void setThermostatProgram(String program, String holdType='') {
 	// Change the Comfort Setting (aka Climate)
     def programsList = []
     programsList = new JsonSlurper().parseText(device.currentValue('programsList'))
@@ -1156,33 +1157,34 @@ void setThermostatProgram(program, holdType=null) {
 
 	LOG("Before calling parent.setProgram()", 5)
 	
-    def sendHoldType = holdType ?: whatHoldType()
+    def sendHoldType = (holdType!='') ? holdType : whatHoldType()
     poll()		// need to know if scheduled program changed recently
 	
 	// if the requested program is the same as the one that is supposed to be running, then just resumeProgram
-	// but only if this is NOT a permanent hold request
-	if (sendHoldType == 'nextTransition') {
-		if (device.currentValue("scheduledProgram") == program) {
-			LOG("Resuming scheduled program ${program}", 2, this, 'info')
-			resumeProgram(true)	// resumeAll so that we get back to scheduled program
-			return
-		}
-	}
+	if (device.currentValue("scheduledProgram") == program) {
+		LOG("Resuming scheduled program ${program}", 2, this, 'info')
+		if (resumeProgramInternal(true)) {							// resumeAll so that we get back to scheduled program
+			if (sendHoldType == 'nextTransition') {		// didn't want a permanent hold, so we are all done
+           		generateProgramEvent(program,'')
+            	runIn(5, poll, [overwrite: true])
+           		return
+        	}
+        }
+	} else {
+       	resumeProgram(true)							// resumeAll before we change the program
+    }
   
     if ( parent.setProgram(this, program, deviceId, sendHoldType) ) {
-    	LOG("Success setting program to ${program}",2,this,'info')
-		generateProgramEvent(program)
-        runIn(5, poll, [overwrite: true])
+    	LOG("Success setting Program to Hold: ${program}",2,this,'info')
+		generateProgramEvent('Hold: '+program)
 	} else {
-    	LOG("Error setting new comfort setting ${program}", 2, this, "warn")
-		def priorProgram = device.currentState("currentProgramId")?.value
-		generateProgramEvent(priorProgram, program) // reset the tile back
+    	LOG("Error setting Program to ${program}", 2, this, "warn")
+		// def priorProgram = device.currentState("currentProgramId")?.value
+		// generateProgramEvent(priorProgram, program) // reset the tile back
 	}
- 
- 	LOG("After calling parent.setProgram()", 5)
+ 	runIn(5, poll, [overwrite: true])
     
-	generateSetpointEvent()
-	generateStatusEvent()    
+ 	LOG("After calling parent.setProgram()", 5)  
 }
 
 void home() {
@@ -1221,13 +1223,13 @@ void night() {
     setThermostatProgram("Sleep")
 }
 
-def generateProgramEvent(program, failedProgram=null) {
+def generateProgramEvent(String program, String failedProgram='') {
 	LOG("Generate generateProgramEvent Event: program ${program}", 4)
-
+    
 	sendEvent(name: "thermostatStatus", value: "Setpoint updating...", /* description: statusText, */ displayed: false)
 
 	String prog = program.capitalize()
-    String progHold = failedProgram ? prog : "Hold: "+prog
+    String progHold = (failedProgram == '') ? prog : "Hold: "+prog
     def updates = ['currentProgramName':progHold,'currentProgramId':program.toLowerCase(),'currentProgram': prog]
     generateEvent(updates)
     
@@ -1695,11 +1697,17 @@ private def usingSmartAuto() {
 }
 
 private def whatHoldType() {
-	def sendHoldType = parent.settings.holdType ? (parent.settings.holdType=="Temporary" || parent.settings.holdType=="Until Next Program")? "nextTransition" : (parent.settings.holdType=="Permanent" || parent.settings.holdType=="Until I Change")? "indefinite" : "indefinite" : "indefinite"
-	LOG("Entered whatHoldType() with ${sendHoldType}  settings.holdType == ${settings.holdType}")
-	if (settings.holdType && settings.holdType != "") { return  holdType ? (settings.holdType=="Temporary" || settings.holdType=="Until Next Program")? "nextTransition" : (settings.holdType=="Permanent" || settings.holdType=="Until I Change")? "indefinite" : "indefinite" : "indefinite" }   
-   
-    return sendHoldType
+	if (settings.holdType && settings.holdType.toString() != '') { 
+    	// Use the hard-coded preferences, if specified - this allows each thermostat to have a different value - not sure if this is logically correct though.
+    	def sendHoldType = (settings.holdType=='Temporary') ? 'nextTransition' : 'indefinite'
+        LOG("Using ${device.displayName} holdType: ${sendHoldType}",2,this,'info')
+        return sendHoldType
+    } else {
+    	// figure out what our parent expects
+ 		def sendHoldType = (parent.settings.holdType && parent.settings.holdType.toString() != '') ? ((parent.settings.holdType=='Until Next Program') ? 'nextTransition' : 'indefinite') : 'indefinite'
+        LOG("Using ${parent.displayName} holdType: ${sendHoldType}",2,this,'info')
+        return sendHoldType
+    }
 }
 
 private debugLevel(level=3) {
