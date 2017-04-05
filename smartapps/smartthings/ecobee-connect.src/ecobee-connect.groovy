@@ -37,12 +37,13 @@
  *	1.0.6 -  Fixed zipCode handling when thermostat does not have a postalCode
  *	1.0.7 -  Rework Climates handling for Hold: (Auto)
  *	1.0.8 -  Cleaned up handling of program Hold: events & commands
+ *	1.0.9 -  Fixed tstat name reporting with debugLevel 5, typo in hourForcedUpdate state
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.8" }
+def getVersionNum() { return "1.0.9" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -1448,7 +1449,7 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
 	if (forcePoll) {
     	// if it's a forcePoll, and thermostatIdString specified, we check only the specified thermostat, else we check them all
         checkTherms = thermostatIdsString ? thermostatIdsString :  allMyChildren
-        if (checkTherms == allMyChildren) atomicState.hourlyForcedUpdated = 0		// reset the hourly check counter if we are forcePolling ALL the thermostats
+        if (checkTherms == allMyChildren) atomicState.hourlyForcedUpdate = 0		// reset the hourly check counter if we are forcePolling ALL the thermostats
         somethingChanged = true
     } else if (atomicState.lastRevisions != atomicState.latestRevisions) {
         // we already know there are changes
@@ -1904,7 +1905,12 @@ def updateThermostatData() {
 		// we use atomicState.thermostatData because it holds the latest Ecobee API response, from which we can determine which stats actually
         // had updated data. Thus the following work is done ONLY for tstats that have updated data
 		def tid = stat.identifier
-
+        
+        def DNI = [ app.id, stat.identifier ].join('.')
+        def tstatName = (thermostatsWithNames?.containsKey(DNI)) ? thermostatsWithNames[DNI] : null
+        if (tstatName == null) {
+            tstatName = getChildDevice(DNI)?.displayName		// better than displaying 'null' as the name
+        }
 		LOG("updateThermostatData() - Updating event data for thermostat ${tstatName} (${tid})", 3, null, 'info')
 
 	// grab a local copy from the atomic storage all at once (avoid repetive reads from backing store)
@@ -2378,11 +2384,11 @@ def updateThermostatData() {
 		// it is possible that thermostatSummary indicated things have changed that we don't care about...
 		if (data != [:]) {
         	data += [ thermostatTime:stat.thermostatTime ]
-        	def DNI = [ app.id, stat.identifier ].join('.')
-        	def tstatName = (thermostatsWithNames?.containsKey(DNI)) ? thermostatsWithNames[DNI] : null
-            if (tstatName == null) {
-                tstatName = getChildDevice(DNI)?.displayName		// better than displaying 'null' as the name
-            }
+//        	def DNI = [ app.id, stat.identifier ].join('.')
+//        	def tstatName = (thermostatsWithNames?.containsKey(DNI)) ? thermostatsWithNames[DNI] : null
+//            if (tstatName == null) {
+//                tstatName = getChildDevice(DNI)?.displayName		// better than displaying 'null' as the name
+//            }
         	tstatNames += [tstatName]
 			collector[DNI] = [thermostatId:tid, data:data]
         }
