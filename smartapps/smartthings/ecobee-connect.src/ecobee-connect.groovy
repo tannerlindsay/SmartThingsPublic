@@ -38,12 +38,13 @@
  *	1.0.7 -  Rework Climates handling for Hold: (Auto)
  *	1.0.8 -  Cleaned up handling of program Hold: events & commands
  *	1.0.9 -  Fixed tstat name reporting with debugLevel 5, typo in hourForcedUpdate state
+ *	1.0.10-	 Fixed resumeProgram resetting HVAC mode incorrectly
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.9" }
+def getVersionNum() { return "1.0.10" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -2093,7 +2094,8 @@ def updateThermostatData() {
                         	currentClimateName = 'Auto'
                     	}
                 	} else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
-                		currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
+                		// currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
+                        currentClimateName = 'Hold'
                 	}// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
                     break;
                 case 'vacation':
@@ -2559,14 +2561,14 @@ def resumeProgram(child, String deviceId, resumeAll=true) {
     // def currentHoldType = child.currentValue("thermostatHold")		// TODO: If we are in a vacation hold, need to delete the vacation
     // theoretically, if currentHoldType == "", we can skip all of this...theoretically
     
-    LOG("resumeProgram() - atomicState.previousHVACMode = ${previousHVACMode} current (${currentHVACMode}) atomicState.previousFanMinOnTime = ${previousFanMinOnTime} current (${currentFanMinOnTime})", 3, child, 'info')	
+    LOG("resumeProgram() - atomicState.previousHVACMode = ${previousHVACMode}, currentHVACMode = ${currentHVACMode} atomicState.previousFanMinOnTime = ${previousFanMinOnTime} current (${currentFanMinOnTime})", 3, child, 'info')	
     if ((previousHVACMode != null) && (currentHVACMode != previousHVACMode)) {
     	// Need to reset the HVAC Mode back to the previous state
         if (currentHVACMode == "off") { atomicState.offFanModeOn = false }
         if (currentHVACMode == "circulate") { atomicState.circulateFanModeOn = false }
         
-        LOG("getHVACMode(child) != atomicState.previousHVACMode${deviceId} (${previousHVACMode})", 5, child, "trace")
-        result = setHVACMode(child, deviceId, previousHVACMode)       
+        //LOG("getHVACMode(child) != atomicState.previousHVACMode${deviceId} (${previousHVACMode})", 5, child, "trace")
+        result = setHVACMode(child, deviceId, previousHVACMode)   
     }
     
     if ((previousFanMinOnTime != null) && (currentFanMinOnTime != previousFanMinOnTime)) {
@@ -2574,7 +2576,7 @@ def resumeProgram(child, String deviceId, resumeAll=true) {
         
         LOG("getFanMinOnTime(child) != atomicState.previousFanMinOnTime${deviceId} (${previousFanMinOnTime})", 5, child, "trace")
         def fanResult = setFanMinOnTime(child, deviceId, previousFanMinOnTime)
-        result = result && fanResult      
+        result = result && fanResult
     }
         
     // 					   {"functions":[{"type":"resumeProgram"}],"selection":{"selectionType":"thermostats","selectionMatch":"YYY"}}
@@ -2583,6 +2585,8 @@ def resumeProgram(child, String deviceId, resumeAll=true) {
     
 	result = sendJson(jsonRequestBody) && result
     LOG("resumeProgram(${resumeAll}) returned ${result}", 3, child,'info')
+    atomicState."previousHVACMode${deviceId}" = null
+    atomicState."previousFanMinOnTime${deviceId}" = null
     return result
 }
 
