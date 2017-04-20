@@ -31,10 +31,11 @@
  *  1.0.3  - Added Health Check support & Thermostat date/time display
  *	1.0.4  - Fixed "Auto" as default program
  *	1.0.5  - Fixed handling of resumeProgram and setThermostatProgram
+ *	1.0.6  - Internal temperature precision limited to 1 decimal digit for F, 2 for C
  *
  */
 
-def getVersionNum() { return "1.0.5" }
+def getVersionNum() { return "1.0.6" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -366,7 +367,7 @@ metadata {
             state "Auto", action:"noOp", label: 'Auto', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
             state "Auto Away", action:"noOp", label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png" // Fix to auto version
             state "Auto Home", action:"noOp", label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png" // Fix to auto
-            state "Hold", action:"noOp", label: "Hold Activated", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
+            state "Hold", action:"noOp", label: 'Hold', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
             state "Hold: Fan", action:"noOp", label: "Hold: Fan", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_solid.png"
             state "Hold: Home", action:"noOp", label: 'Hold: Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue_solid.png"
             state "Hold: Away", action:"noOp", label: 'Hold: Away',  icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue_solid.png"
@@ -639,17 +640,21 @@ def generateEvent(Map results) {
 				case 'weatherTemperature':
                 case 'thermostatSetpoint':
                     if (isChange) {
-                    	//String sendValue = "${value}"		// Already rounded to appropriate user precision (except temperature, which is sent in API precision)
-                    	event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, value, linkText), isStateChange: true, displayed: true]
 						if (name=="temperature") {
+                        	Double dValue = value.toDouble()
 							// Generate the display value that will preserve decimal positions ending in 0
                     		if (precision == 0) {
-                    			tempDisplay = value.toDouble().round(0).toInteger().toString() + '°'
+                    			tempDisplay = dValue.round(0).toInteger().toString() + '°'
                     		} else {
-								tempDisplay = String.format( "%.${precision.toInteger()}f", value.toDouble().round(precision.toInteger())) + '°'
+								tempDisplay = String.format( "%.${precision.toInteger()}f", dValue.round(precision.toInteger())) + '°'
                     		}
+                            
+                            // Trim the internal precision to 1 decimal digit for F, 2 for C
+                            int internalPrec = wantMetric() ? 2 : 1
+                            sendValue = String.format( "%.${prec}f", dValue.round(internalPrec))
 						} 
-                    }
+                    	event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
+					}
 					break;
 				
 				case 'thermostatOperatingState':
