@@ -32,10 +32,11 @@
  *	1.0.4  - Fixed "Auto" as default program
  *	1.0.5  - Fixed handling of resumeProgram and setThermostatProgram
  *	1.0.6  - Internal temperature precision limited to 1 decimal digit for F, 2 for C
+ *	1.0.6a - Typo in prior fix
  *
  */
 
-def getVersionNum() { return "1.0.6" }
+def getVersionNum() { return "1.0.6a" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -651,7 +652,7 @@ def generateEvent(Map results) {
                             
                             // Trim the internal precision to 1 decimal digit for F, 2 for C
                             int internalPrec = wantMetric() ? 2 : 1
-                            sendValue = String.format( "%.${prec}f", dValue.round(internalPrec))
+                            sendValue = String.format( "%.${internalPrec}f", dValue.round(internalPrec))
 						} 
                     	event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
 					}
