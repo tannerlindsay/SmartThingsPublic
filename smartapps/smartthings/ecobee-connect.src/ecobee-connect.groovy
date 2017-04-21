@@ -39,12 +39,13 @@
  *	1.0.8 -  Cleaned up handling of program Hold: events & commands
  *	1.0.9 -  Fixed tstat name reporting with debugLevel 5, typo in hourForcedUpdate state
  *	1.0.10-	 Fixed resumeProgram resetting HVAC mode incorrectly
+ *	1.0.11-	 Create vacation template automatically if one doesn't exist (ecobee bug workaround for hold events)
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.10" }
+def getVersionNum() { return "1.0.11" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -932,10 +933,11 @@ private def createChildrenSensors() {
 
 // somebody pushed my button - do a force poll
 def appHandler(evt) {
-    log.debug "app event ${evt.name}:${evt.value} received"
-    
-    atomicState.forcePoll = true
-    pollChildren()
+	if (evt.value == 'touch') {
+    	LOG('appHandler(touch) event, forced poll',2,null,'info')
+		atomicState.forcePoll = true
+    	pollChildren()
+    }
 }
 
 // NOTE: For this to work correctly getEcobeeThermostats() and getEcobeeSensors() should be called prior
@@ -2046,9 +2048,23 @@ def updateThermostatData() {
 		LOG( "scheduledClimateId: ${scheduledClimateId}, scheduledClimateName: ${scheduledClimateName}, climatesList: ${climatesList.toString()}", 4, null, 'info')
         
 		// check which program is actually running now
-		if (events?.size()) {         
-        	runningEvent = events.find { it.running == true }        	
+        def vacationTemplate = false
+		if (events?.size()) {
+        	events.each {
+            	if (it.running == true) {
+                	runningEvent = it
+                } else if ( it.type == 'template' ) {	// templates never run...
+                	vacationTemplate = true
+                }
+            }
 		}
+        
+        // hack to fix ecobee bug where template is not created until first Vacation is created, which screws up resumeProgram() (last hold event is not deleted)
+        if (!vacationTemplate) {
+        	LOG("No vacation template exists for ${tid}, creating one...", 2, null, 'warn')
+        	def r = createVacationTemplate(getChildDevice(DNI), tid.toString())		
+            LOG("createVacationTemplate() returned ${r}", 3, null, 'trace')
+        }
         
         // store the currently running event (in case we need to modify or delete it later, as in Vacation handling)
         def tempRunningEvent = [:]
@@ -2629,9 +2645,12 @@ def setVacationFanMinOnTime(child, deviceId, howLong) {
     
     def evt = atomicState.runningEvent[deviceId]
     def hasEvent = true
-    if (!evt) hasEvent = false						// no running event defined
-    if (evt.running != true) hasEvent = false		// shouldn't have saved it if it wasn't running
-    if (evt.type != "vacation") hasEvent = false	// we only override vacation fanMinOnTime setting
+    if (!evt) {
+    	hasEvent = false						// no running event defined
+    } else {
+    	if (evt.running != true) hasEvent = false		// shouldn't have saved it if it wasn't running
+    	if (hasEvent && (evt.type != "vacation")) hasEvent = false	// we only override vacation fanMinOnTime setting
+    }
   	if (!hasEvent) {
     	LOG("setVacationFanMinOnTime() - Vacation not active on thermostatId ${deviceId}", 4, child, 'warn')
         return false
@@ -2653,6 +2672,28 @@ def setVacationFanMinOnTime(child, deviceId, howLong) {
 
     return result
     }
+}
+
+private def createVacationTemplate(child, deviceId) {
+	String vacationName = 'tempVac810n'
+    
+    // delete any old temporary vacation that we created
+    deleteVacation(child, deviceId, vacationName)
+    
+    // Create the temporary vacation
+    def thermostatSettings = ''
+    def thermostatFunctions = 	'{"type":"createVacation","params":{"name":"' + vacationName + 
+    							'","coolHoldTemp":"850","heatHoldTemp":"550","startDate":"2034-01-01","startTime":"08:30:00","endDate":"2034-01-01","endTime":"09:30:00","fan":"auto","fanMinOnTime":"5"}}'
+    def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
+	
+    LOG("before sendJson() jsonRequestBody: ${jsonRequestBody}", 4, child, 'trace')
+    def result = sendJson(child, jsonRequestBody)
+    LOG("createVacationTemplate(${vacationName}) returned ${result}", 4, child, 'trace')
+    
+    // Now, delete the temporary vacation
+    result = deleteVacation(child, deviceId, vacationName)
+    LOG("deleteVacation(${vacationName}) returned ${result}", 4, child, 'trace')
+    return true
 }
 
 def deleteVacation(child, deviceId, vacationName=null ) {
@@ -2957,6 +2998,10 @@ private def sendJsonRetry() {
     	child = getChildDevice(atomicState.savedActionChild)
     }
     
+    if (child == null) {
+    	LOG("sendJsonRetry() - nosave Action child!", 2, child, "warn")
+        return false
+    }
     if (atomicState.savedActionJsonBody == null) {
     	LOG("sendJsonRetry() - no saved JSON Body to send!", 2, child, "warn")
         return false
