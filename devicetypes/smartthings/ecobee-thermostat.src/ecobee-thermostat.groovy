@@ -33,10 +33,11 @@
  *	1.0.5  - Fixed handling of resumeProgram and setThermostatProgram
  *	1.0.6  - Internal temperature precision limited to 1 decimal digit for F, 2 for C
  *	1.0.6a - Typo in prior fix
+ *	1.0.7  - Fixed handling of humidity setpoint range (HVACmode = auto && humidifier && dehumidify w/AC)
  *
  */
 
-def getVersionNum() { return "1.0.6a" }
+def getVersionNum() { return "1.0.7" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -709,7 +710,7 @@ def generateEvent(Map results) {
             		break;
 				
 				case 'humiditySetpoint':
-					if (isChange && (value.toInteger() != 0)) {
+					if (isChange && (sendValue != '0')) {
                     	event = eventFront + [value: sendValue, descriptionText: "Humidity setpoint is ${sendValue}%", isStateChange: true, displayed: false]
                         def hum = device.currentValue('humidity')
                         if (hum == null) hum = 0
