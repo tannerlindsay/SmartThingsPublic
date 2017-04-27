@@ -194,7 +194,7 @@ private def generateSensorsEvents( Map dataMap ) {
 
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
+	log."${logType}" message
 	message = "${app.label} ${message}"
 	parent?.LOG(message, level, null, logType, event, displayEvent)
-    log."${logType}" message
 }
