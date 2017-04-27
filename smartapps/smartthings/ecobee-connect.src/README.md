@@ -14,6 +14,7 @@ Ecobee Thermostat SmartApp(s) and related Device Types for use with the SmartThi
     - [ecobee Open Contacts SmartApp](#features-opencontact-sa)
     - [ecobee Smart Circulation SmartApp](#features-smart-circ-sa)
     - [ecobee Smart Room SmartApp](#features-smart-room-sa)
+    - [ecobee Smart Vents SmartApp](#features-smart-vents-sa)
     - [ecobee Smart Zones SmartApp](#features-smart-zone-sa)
 - [Installation](#installation)
   - [Install Device Handlers](#install-device-types)
@@ -238,6 +239,9 @@ The `Smart Room' Helper SmartApp will automate a normally unused room, Activatin
   - Optionally notify on Activations via Push, using Contact List or default Push
   - Temporarily Disable app without having to delete and recreate!
     
+## <a name="features-smart-vents-sa">`Smart Vents` SmartApp</a>
+Documentation coming soon.
+
 ## <a name="features-smart-zone-sa">`Smart Zones` SmartApp</a>
 Documentation coming soon.
 
