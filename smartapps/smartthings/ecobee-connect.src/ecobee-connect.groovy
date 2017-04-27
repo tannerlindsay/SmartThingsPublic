@@ -40,12 +40,13 @@
  *	1.0.9 -  Fixed tstat name reporting with debugLevel 5, typo in hourForcedUpdate state
  *	1.0.10-	 Fixed resumeProgram resetting HVAC mode incorrectly
  *	1.0.11-	 Create vacation template automatically if one doesn't exist (ecobee bug workaround for hold events)
+ *	1.0.12-	 Added new Smart Vents Helper SmartApp
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.11" }
+def getVersionNum() { return "1.0.12" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -61,6 +62,9 @@ private def getHelperSmartApps() {
         [name: "ecobeeRoomChild", appName: "ecobee Smart Room",
         	namespace: "smartthings", multiple: true,
             title: "Create new Smart Room Handler..."],
+        [name: "ecobeeRoomChild", appName: "ecobee Smart Vents",
+        	namespace: "smartthings", multiple: true,
+            title: "Create new Smart Vents Handler..."],
 		[name: "ecobeeZonesChild", appName: "ecobee Smart Zones",
 			 namespace: "smartthings", multiple: true,
 			 title: "Create new Smart Zone Handler..."]
