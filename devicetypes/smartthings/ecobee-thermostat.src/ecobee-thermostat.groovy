@@ -34,10 +34,11 @@
  *	1.0.6  - Internal temperature precision limited to 1 decimal digit for F, 2 for C
  *	1.0.6a - Typo in prior fix
  *	1.0.7  - Fixed handling of humidity setpoint range (HVACmode = auto && humidifier && dehumidify w/AC)
+ *	1.0.8  - Improved Health Check reliability
  *
  */
 
-def getVersionNum() { return "1.0.7" }
+def getVersionNum() { return "1.0.8" }
 private def getVersionLabel() { return "Ecobee Thermostat Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -637,6 +638,7 @@ def generateEvent(Map results) {
 			
 			switch (name) {
 				case 'temperature':
+                	isChange = true		// always update temperature so that Health Check knows we are alive
 				case 'heatingSetpoint':
 				case 'coolingSetpoint':
 				case 'weatherTemperature':
