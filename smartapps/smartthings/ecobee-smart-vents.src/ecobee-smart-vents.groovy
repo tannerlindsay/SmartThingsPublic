@@ -104,11 +104,11 @@ void uninstalled() {
 }
 
 def initialize() {
-	LOG("${getVersionLabel()} Initializing...", 3, "", 'info')
+	LOG("${getVersionLabel()} Initializing...", 2, "", 'info')
     
     // Now, just exit if we are disabled...
 	if(tempDisable == true) {
-    	LOG("temporarily disabled as per request.", 2, null, "warn")
+    	LOG("temporarily disabled as per request.", 1, null, "warn")
     	return true
     }
 	
@@ -142,7 +142,7 @@ def changeHandler(evt) {
 
 private String checkTemperature() {
 	def cOpState = theThermostat.currentValue('thermostatOperatingState')
-    LOG("Current Operating State ${cOpState}",2,null,'info')
+    LOG("Current Operating State ${cOpState}",3,null,'info')
 	def cTemp = getCurrentTemperature()
 	
 	def vents = ''			// if not heating/cooling/fan, then no change to current vents
@@ -156,7 +156,7 @@ private String checkTemperature() {
     
 	if (vents == '' && cOpState.contains('fan only')) vents = 'open'		// if fan only, open the vents
 	if (theWindows && theWindows.currentContact.contains('open')) vents = 'closed'	// but if a window is open, close the vents
-	LOG("Vents should be ${vents!=''?vents:'unchanged'}",2,null,'info')
+	LOG("Vents should be ${vents!=''?vents:'unchanged'}",3,null,'info')
 	return vents
 }
 
@@ -180,7 +180,7 @@ def getCurrentTemperature() {
 	}
 	if (theSensors.size() > 1) tTemp = tTemp / theSensors.size()
 
-    LOG("Current temperature is ${tTemp}",2,null,'info')
+    LOG("Current temperature is ${tTemp}",3,null,'info')
     return tTemp
 }
 
