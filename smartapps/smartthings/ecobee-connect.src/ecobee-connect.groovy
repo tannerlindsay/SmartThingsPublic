@@ -41,12 +41,13 @@
  *	1.0.10-	 Fixed resumeProgram resetting HVAC mode incorrectly
  *	1.0.11-	 Create vacation template automatically if one doesn't exist (ecobee bug workaround for hold events)
  *	1.0.12-	 Added new Smart Vents Helper SmartApp
+ *	1.0.13-	 Improved Health Check reliability
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.12" }
+def getVersionNum() { return "1.0.13" }
 private def getVersionLabel() { return "Ecobee (Connect) Version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -1243,8 +1244,13 @@ def pollInit() {
 
 def pollChildren(deviceId = null) {  
 	LOG("pollChildren() - deviceId ${deviceId}", 4, child, 'trace')
-    def forcePoll = deviceId || atomicState.forcePoll ? true : false
-    atomicState.forcePoll = forcePoll
+    def forcePoll
+    if (deviceId != null) {
+    	atomicState.forcePoll = true
+        forcePoll = true
+    } else {
+    	forcePoll = atomicState.forcePoll
+    }
 
 	LOG("=====> pollChildren() - atomicState.forcePoll(${forcePoll})  atomicState.lastPoll(${atomicState.lastPoll})  now(${now()})  atomicState.lastPollDate(${atomicState.lastPollDate})", 4, child, "trace")
     
