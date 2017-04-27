@@ -19,10 +19,11 @@
  *	1.0.2  - Changed handling of online/offline
  *	1.0.3  - Added Health Check support
  *	1.0.4  - Revised poll/refresh/ping commands
+ *	1.0.5  - Improved Health Check reliability
  *
  */
 
-def getVersionNum() { return "1.0.4" }
+def getVersionNum() { return "1.0.5" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -228,7 +229,8 @@ def generateEvent(Map results) {
 					event = [name: name, linkText: linkText, descriptionText: "Sensor is Offline", handlerName: name, value: sendValue, isStateChange: true, displayed: true]
                 } else {
                 	// must be online  
-					isChange = isStateChange(device, name, sendValue)
+					// isChange = isStateChange(device, name, sendValue)
+                    isChange = true // always send the temperature, else HealthCheck will think we are OFFLINE
                     
                     // Generate the display value that will preserve decimal positions ending in 0
                     if (isChange) {
