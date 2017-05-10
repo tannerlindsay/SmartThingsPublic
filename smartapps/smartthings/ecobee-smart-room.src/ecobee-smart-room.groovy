@@ -19,8 +19,9 @@
  *	0.1.3 -	Added ability to manually enable/disable Smart Room by clicking on the tile
  *	1.0.0 - Final prep for General Release
  *	1.0.1 - Edit LOG and setup for consistency
+ *	1.0.2 - Fixed initialization
  */
-def getVersionNum() { return "1.0.1" }
+def getVersionNum() { return "1.0.2" }
 private def getVersionLabel() { return "ecobee Smart Room Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -112,6 +113,7 @@ def mainPage() {
 // Main functions
 void installed() {
 	LOG("installed() entered", 2, "", 'trace')
+    initialize()
 }
 
 void updated() {
