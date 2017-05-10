@@ -15,8 +15,9 @@
  *
  *	1.0.1 - Initial Release
  *	1.0.2 - Misc optimizations and logging changes
+ *	1.0.3 - Correct preferences page naming
  */
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "ecobee Smart Vents Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -38,9 +39,9 @@ preferences {
 
 // Preferences Pages
 def mainPage() {
-	dynamicPage(name: "mainPage", title: "Configure Smart Room", uninstall: true, install: true) {
-    	section(title: "Name for Smart Room Handler") {
-        	label title: "Name this Smart Room Handler", required: true, defaultValue: "Smart Vents"      
+	dynamicPage(name: "mainPage", title: "Configure Smart Vents", uninstall: true, install: true) {
+    	section(title: "Name for Smart Vents Handler") {
+        	label title: "Name this Smart Vents Handler", required: true, defaultValue: "Smart Vents"      
         }
         
         section(title: "Smart Vents Temperature Sensor(s)") {
@@ -91,6 +92,7 @@ def mainPage() {
 // Main functions
 void installed() {
 	LOG("installed() entered", 3, "", 'trace')
+    initialize()
 }
 
 void updated() {
@@ -116,6 +118,7 @@ def initialize() {
     subscribe(theSensors, 'temperature', changeHandler)	
 	subscribe(theThermostat, 'thermostatOperatingState', changeHandler)
     subscribe(theThermostat, 'temperature', changeHandler)
+    subscribe(theVents, 'level', changeHandler)
 	if (theWindows) subscribe(theWindows, "contact", changeHandler)
     if (useThermostat) {
     	subscribe(theThermostat, 'heatingSetpoint', changeHandler)
