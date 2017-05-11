@@ -14,6 +14,7 @@ Ecobee Thermostat SmartApp(s) and related Device Types for use with the SmartThi
     - [ecobee Open Contacts SmartApp](#features-opencontact-sa)
     - [ecobee Smart Circulation SmartApp](#features-smart-circ-sa)
     - [ecobee Smart Room SmartApp](#features-smart-room-sa)
+    - [ecobee Smart Switches SmartApp](#features-smart-switches-sa)
     - [ecobee Smart Vents SmartApp](#features-smart-vents-sa)
     - [ecobee Smart Zones SmartApp](#features-smart-zone-sa)
 - [Installation](#installation)
@@ -36,6 +37,7 @@ The following components are part of the solution:
 - **ecobee Routines Helper SmartApp**: Child app that lets you trigger settings changes on your Ecobee thermostats based on the SmartThings Hello Modes and/or Routines. This version also supports changing SmartThings Mode or executing a Routine when the thermostat enters a new Program or Vacation. Settings include the Ecobee Program (Comfort Settings), Fan Modes and Hold Types. In additional to SmartThings Hello Modes, sunrise/sunset triggers are also support. Multiple instances of the SmartApp are also supported for maximum flexibility.
 - **Ecobee Smart Circulation Helper SmartApp**: Child app that adjusts hourly circulation time (fan on minimum minutes) trying to get 2 or more temperature sensors (Ecobee or SmartThings) to within a configurable temperature difference.
 - **Ecobee Smart Room Helper SmartApp**: Child app that automates a "Smart Room." Intended for rooms that are normally not used (doors, windows and automated vents closed), this app will Activate a "Smart Room" when the door is left open for a configurable period (defalt 5 minutes). Once active, the room's Ecobee Sensor is added to any of the user-selected default 3 Programs (Home, Away, Sleep), and (optionally) the automated vent (EcoNet or Keene) is opened. If the door is closed, after a configurable number of hours (default 12), it will De-activate the Smart Room, removing the Ecobee sensor from specified Programs and closing the vent. While active, opening a window will temporarily de-activate the room until the window is closed. If motion is detected while the door is closed, the automated de-activation will be cancelled until the next time the door is closed (and no motion is detected. Requires: Ecobee3 Full (not Lite version), Ecobee Temp/Occupancy Sensor and Door contact sensor. Optional: Window contact sensor(s), EcoNet or Keene smart vents.
+- **Ecobee Smart Switches Helper SmartApp**: Child app that will turn on/off one or more switches, and/or set the level on one or more dimmers (also works for vents), all based on changes to the Operating State of one or more thermostats. Intended to turn on vent booster fans when HVAC is pushing air, and (optionally) turn them off when they return to idle state. Can also be used to control lights and dimmers; dimmer control can be used to operate vents (see also Smart Vents Helper, below).
 - **Ecobee Smart Vents Helper SmartApp**: Child app that will open and close one or more SmartThings-controlled HVAC vents based on room temperature in relation to specified heating/cooling target setpoint, or the setpoint of the specified thermostat.
 - **Ecobee Smart Zones Helper SmartApp**: Child app that attempts to synchronize fan on time between two zones. Intended for use on multi-zones HVAC systems; running the fan on all the zones simultaneously could help reduce electricity consumption vs. having each zone run the fan independently.
 - **Ecobee Thermostat Device Handler**: This implements the Device Handler for the Ecobee Thermostat functions and attributes. Now includes indicators for current thermostat Program, buttons that allow adding/removing the zone from specific Programs (Home, Away, Sleep only), and indicators that appear when Smart Room is configured for the room.
@@ -58,6 +60,7 @@ The ultimate goal would be to have these capabilities become part of the stock d
 - ecobee Open Contacts Child SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-open-contacts.src>
 - ecobee Smart Circulation Helper SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-circulation.src>
 - ecobee Smart Room Helper SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-room.src>
+- ecobee Smart Switches Helper SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-switches.src>
 - ecobee Smart Vents Helper SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-vents.src>
 - ecobee Smart Zones Helper SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-zones.src>
 - Ecobee Thermostat Device: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/devicetypes/smartthings/ecobee-thermostat.src>
@@ -183,11 +186,13 @@ The `ecobee Routines` SmartApp provides the ability to change the running Progra
 - Temporarily Disable app without having to delete and recreate!
 
 ## <a name="features-opencontact-sa">`Open Contacts` SmartApp</a>
-The `Open Contacts` SmartApp can detect when one (or more) contact sensors (such as doors and windows) are left open for a configurable amount of time and can automatically turn off the HVAC and/or send a notification when it is detected.
+The `Open Contacts` SmartApp can detect when one (or more) contact sensors (such as doors and windows) are left open for a configurable amount of time and can automatically turn off the HVAC and/or send a notification when it is detected. 
+
+Updated May 10, 2017 to also support switches, with configurable selection of whether contact open or close, switch on or off will turn off the HVAC. This enhancement allows (for example) automatically turning off the HVAC when the attic fan is running.
 
 <b>Features:</b>
 - Change one or multiple thermostats
-- Trigger based on one or multiple contact sensors
+- Trigger based on one or multiple contact sensors and/or switches
 - Configurable delay timers (for trigger and reset)
 - Configurable actions: Notify Only, HVAC Only or Both
 - Support for Contact Book or simply SMS for notifications
@@ -211,8 +216,8 @@ The `Smart Ciculation' SmartApp will adjust fan mininum on time of an Ecobee the
 The `Smart Room' Helper SmartApp will automate a normally unused room, Activating it one or more of the Doors associated with the Smart Room are left open for a configurable number of minutes, and Deactivating it when all the Doors are closed for a configurable number of hours.
 
 <b>Requirements:</b>
-  - Ecobee 3 thermostat (Full - Lite is not supported)
-  - Ecobee 3 Sensor in the room
+  - Ecobee thermostat with Sensor support
+  - Ecobee Sensor in the room
   - One or more Doors, each with a contact sensor
   
 <b>Optional:</b>
@@ -239,6 +244,9 @@ The `Smart Room' Helper SmartApp will automate a normally unused room, Activatin
   - Optionally notify on Activations via Push, using Contact List or default Push
   - Temporarily Disable app without having to delete and recreate!
     
+## <a name="features-smart-switches-sa">`Smart Switches`</a>
+Documentation coming soon
+
 ## <a name="features-smart-vents-sa">`Smart Vents` SmartApp</a>
 Documentation coming soon.
 
