@@ -17,14 +17,15 @@
  *	1.0.1	-	Tweaked LOG and setup for consistency across all the Helper SmartApps
  *	1.0.2	-	Fixed 'clear()' and a typo or two
  *  1.0.3	-	Optimized prior fix
+ *	1.0.4	- 	Added support for switches, configurable open/closed/on/off
  *
  */
  
  /**
   * TODO: Add support for more than on/off such as programs
   */
-def getVersionNum() { return "1.0.3" }
-private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
+def getVersionNum() { return "1.0.4" }
+private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
 
 
 
@@ -32,7 +33,7 @@ definition(
 	name: "ecobee Open Contacts",
 	namespace: "smartthings",
 	author: "Sean Kendall Schneyer (smartthings at linuxbox dot org)",
-	description: "Support for changing ecobee runtime based on status of contact sensors",
+	description: "Turn HVAC on/off based on status of contact sensors or switches",
 	category: "Convenience",
 	parent: "smartthings:Ecobee (Connect)",
 	iconUrl: "https://s3.amazonaws.com/smartapp-icons/Partner/ecobee.png",
@@ -47,9 +48,8 @@ preferences {
 // Preferences Pages
 def mainPage() {
 	dynamicPage(name: "mainPage", title: "Setup Routines", uninstall: true, install: true) {
-    	section(title: "Name for Open Contacts Handler") {
-        	label title: "Name this Open Contacts Handler", required: true, defaultValue: "Open Contacts Handler"
-        
+    	section(title: "Name for Contacts Handler") {
+        	label title: "Name this Contacts Handler", required: true, defaultValue: "Open Contacts Handler"
         }
         
         section(title: "Select Thermostats") {
@@ -60,21 +60,33 @@ def mainPage() {
 		if (myThermostats?.size() > 0) {
 
 			section(title: "Select Contact Sensors") {
-				input(name: "contactSensors", title: "Contact Sensors: ", type: "capability.contactSensor", required: true, multiple: true, description: "")
-			}
-        
-			section(title: "Timers") {
-				input(name: "offDelay", title: "Delay time (in minutes) before turning off HVAC or Sending Notification [Default=5]", type: "enum", required: true, metadata: [values: [0, 1, 2, 3, 4, 5, 10, 15, 30]], defaultValue: 5)
-				input(name: "onDelay", title: "Delay time (in minutes) before turning HVAC back on  or Sending Notification [Default=0]", type: "enum", required: true, metadata: [values: [0, 1, 2, 3, 4, 5, 10, 15, 30]], defaultValue: "0")        	
-	        }
-            
-            section(title: "Action Preferences") {
-            	input(name: "whichAction", title: "Select which actions to take [Default=Notify Only]", type: "enum", required: true, metadata: [values: ["Notify Only", "HVAC Only", "Notify and HVAC"]], defaultValue: "Notify Only", submitOnChange: true)
-				if (settings.whichAction != "HVAC Only") {
-					input("recipients", "contact", title: "Send notifications to") {
-						input "phone", "phone", title: "Warn with text message (optional)", description: "Phone Number", required: false
-        			}                
+				input(name: "contactSensors", title: "Contact Sensors: ", type: "capability.contactSensor", required: false, multiple: true, description: "")
+                if (contactSensors) {
+                	input(name: 'contactOpen', type: 'bool', title: 'Stop HVAC when contact(s) are open?', required: true, defaultValue: true)
                 }
+			}
+            
+            section(title: "Select Switches") {
+            	input(name: "theSwitches", title: "Switches: ", type: "capability.switch", required: false, multiple: true, description: "")
+                if (theSwitches) {
+                	input(name: 'switchOn', type: 'bool', title: 'Stop HVAC when switch(es) are turned on?', required: true, defaultValue: true)
+                }
+        	}
+            
+            if ((contactSwitches != null) && (theSwitches != null)) {
+				section(title: "Timers") {
+					input(name: "offDelay", title: "Delay time (in minutes) before turning off HVAC or Sending Notification [Default=5]", type: "enum", required: true, metadata: [values: [0, 1, 2, 3, 4, 5, 10, 15, 30]], defaultValue: 5)
+					input(name: "onDelay", title: "Delay time (in minutes) before turning HVAC back on  or Sending Notification [Default=0]", type: "enum", required: true, metadata: [values: [0, 1, 2, 3, 4, 5, 10, 15, 30]], defaultValue: "0")        	
+	        	}
+            
+            	section(title: "Action Preferences") {
+            		input(name: "whichAction", title: "Select which actions to take [Default=Notify Only]", type: "enum", required: true, metadata: [values: ["Notify Only", "HVAC Only", "Notify and HVAC"]], defaultValue: "Notify Only", submitOnChange: true)
+					if (settings.whichAction != "HVAC Only") {
+						input("recipients", "contact", title: "Send notifications to") {
+							input "phone", "phone", title: "Warn with text message (optional)", description: "Phone Number", required: false
+        				}                
+                	}
+            	}
             }
             
 		} // End if (myThermostats?.size() > 0)
@@ -87,7 +99,6 @@ def mainPage() {
     }
 }
 
-
 // Main functions
 def installed() {
 	LOG("installed() entered", 5)
@@ -99,10 +110,6 @@ def updated() {
 	unsubscribe()
 	unschedule()
 	initialize()
-/*    if(tempDisable == false) {
-    	// make sure states are consistent with the existing sensor values
-        // TODO
-    } */
 }
 
 def initialize() {
@@ -113,30 +120,59 @@ def initialize() {
 	}
     
     // TODO: update based on real status?
-    if (allClosed()) {
-    	state.openedState = "closed"
-    } else {
-    	state.openedState = "opened"
-    }
+    // if (allClosed()) {
+    //	state.openedState = "closed"
+    // } else {
+    //	state.openedState = "opened"
+    //}
 
-	subscribe(contactSensors, "contact.open", sensorOpened)
-	subscribe(contactSensors, "contact.closed", sensorClosed)
+	Boolean contactOffState = false
+	if (contactSensors) {
+    	if (contactOpen) {
+    		subscribe(contactSensors, "contact.open", sensorOpened)
+			subscribe(contactSensors, "contact.closed", sensorClosed)
+            contactOffState = contactSensors.currentContact.contains('open')
+       	} else {
+        	subscribe(contactSensors, "contact.closed", sensorOpened)
+			subscribe(contactSensors, "contact.open", sensorClosed)
+            contactOffState = contactSensors.currentContact.contains('closed')
+        }
+    }
+    
+    Boolean switchOffState = false
+    if (theSwitches) {
+    	if (switchOn) {
+        	subscribe(theSwitches, "switch.on", sensorOpened)
+            subscribe(theSwitches, "switch.off", sensorClosed)
+            switchOffState = theSwitches.currentSwitch.contains('on')
+        } else {
+        	subscribe(theSwitches, "switch.off", sensorOpened)
+            subscribe(theSwitches, "switch.on", sensorClosed)
+            switchOffState = theSwitches.currentSwitch.contains('off')
+        }
+    }
+    
+    atomicState.HVACOffState = (contactOffState || switchOffState)
     
     // TODO: Subscribe to the thermostat states to be notified when the HVAC is turned on or off outside of the SmartApp?
 	
 	LOG("initialize() exiting")
 }
 
+def HVACOff(evt) { sensorOpened(evt) }
+def HVACOn(evt) { sensorClosed(evt) }
+
+// "sensorOpened" called when state change should turn HVAC off - routine named preserved for backwards compatibility with prior implementations
 def sensorOpened(evt) {
-	// A sensor (door/window) was opened
-	LOG("sensorOpened() entered with evt: ${evt}", 5)
+	// A sensor (door/window) was opened, or switch was turned on
+	LOG("sensorOpened() entered with event ${evt.device} ${evt.name}: ${evt.value}", 3)
 	
 	def gotEvent = evt.value?.toLowerCase()
-	LOG("--- Event name received (in lowercase): ${gotEvent}", 5)
-    LOG("--- Event data received: ${evt.data}", 5)
-    LOG("--- Event descriptionText: ${evt.descriptionText}", 5)
-    LOG("--- Event device: ${evt.device}", 5)
-    LOG("--- Event deviceId: ${evt.deviceId}", 5)
+//	LOG("--- Event name received (in lowercase): ${gotEvent}", 5)
+//    LOG("--- Event data received: ${evt.data}", 5)
+//   LOG("--- Event descriptionText: ${evt.descriptionText}", 5)
+//    LOG("--- Event device: ${evt.device}", 5)
+//    LOG("--- Event deviceId: ${evt.deviceId}", 5)
     
     if(state.openedState == "closed_pending") {
     	// Just need to cancel the close
@@ -159,7 +195,7 @@ def sensorOpened(evt) {
 
 
 		if(delay > 0) {
-        	LOG("Delay is greater than zero (0)", 5)
+//        	LOG("Delay is greater than zero (0)", 5)
         	runIn(delay*60, openedScheduledActions)
         } else if (delay == 0) {
         	// turn on immediately
@@ -171,7 +207,6 @@ def sensorOpened(evt) {
 def openedScheduledActions() {
 	LOG("openedScheduledActions entered", 5)
     turnoffHVAC()
-
 }
 
 def sensorClosed(evt) {
@@ -282,20 +317,36 @@ private turnonHVAC() {
 
 private Boolean allClosed() {
 	// Check if all Sensors are closed   
-    LOG("allClosed() entered", 5)
+    // LOG("allClosed() entered", 5)
     def response = true
     
-    settings.contactSensors.each() {
-    	LOG("Sensor ${it.name} state is ${it}", 5)
-    	if (it.latestValue("contact") == "open") {
-        	LOG("Sensor ${it.name} is open. Returning false", 5)
-            response = false
+    if (contactSensors) {
+    	settings.contactSensors.each() {
+    		// LOG("Sensor ${it.displayName} state is ${it}", 5)
+    		if (contactOpen && (it.latestValue("contact") == "open")) {
+        		LOG("Sensor ${it.displayName} is open, Returning false", 5)
+            	response = false
+            } else if (!contactOpen && (it.latestValue("contact") == "closed")) {
+                LOG("Sensor ${it.displayName} is closed, Returning false", 5)
+                response = false
+            }
+        }
+    }
+    if (theSwitches) {
+    	settings.theSwitches.each() {
+    		// LOG("Switch ${it.displayName} state is ${it}", 5)
+    		if (switchOn && (it.latestValue("switch") == "on")) {
+        		LOG("Switch ${it.displayName} is on, Returning false", 5)
+            	response = false
+            } else if (!switchOn && (it.latestValue("switch") == "off")) {
+                LOG("Switch ${it.displayName} is off, Returning false", 5)
+                response = false
+            }
         }
     }
     
-    if (response) LOG("All Contact Sensors are closed, returning true")
+    if (response) LOG("Returning true")
     return response
-	
 }
 
 
