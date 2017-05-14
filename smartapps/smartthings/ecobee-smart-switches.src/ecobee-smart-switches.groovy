@@ -14,8 +14,9 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  *	1.0.1 - Initial Release
+ *	1.0.2 - Added option to limit operation to certain SmartThings Modes
  */
-def getVersionNum() { return "1.0.1" }
+def getVersionNum() { return "1.0.2" }
 private def getVersionLabel() { return "ecobee Smart Switches Version ${getVersionNum()}" }
 
 definition(
@@ -73,12 +74,12 @@ def mainPage() {
 						defaultValue: false, submitOnChange: true)
             	}
         	}
-        }
         	
-		section(title: "Temporarily Disable?") {
-        	input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
+			section(title: "Smart Switches: Operation") {
+        		mode(title: "Enable only for specific mode(s)")
+        		input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
+        	}
         }
-        
         section (getVersionLabel())
     }
 }
