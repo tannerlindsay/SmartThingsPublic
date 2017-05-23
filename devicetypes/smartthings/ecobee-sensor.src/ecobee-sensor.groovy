@@ -20,10 +20,11 @@
  *	1.0.3  - Added Health Check support
  *	1.0.4  - Revised poll/refresh/ping commands
  *	1.0.5  - Improved Health Check reliability
+ *  1.0.6  - Restored Fahrenheit 451 ("offline" display)
  *
  */
 
-def getVersionNum() { return "1.0.5" }
+def getVersionNum() { return "1.0.6" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -81,7 +82,7 @@ metadata {
 		multiAttributeTile(name:"temperatureDisplay", type: "generic", width: 6, height: 4){
 			tileAttribute ("device.temperatureDisplay", key: "PRIMARY_CONTROL") {
 				attributeState("temperature", label:'${currentValue}',
-					backgroundColors: getTempColors())
+					backgroundColors: getTempColors(), defaultState: true)
 			}
 			tileAttribute ("device.motion", key: "SECONDARY_CONTROL") {
                 attributeState "active", action:"noOp", nextState: "active", label:"Motion", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_motion.png"
@@ -92,8 +93,8 @@ metadata {
             }
 		}
         
-		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: false, icon: "st.Home.home1") {
-            state("temperature", defaultState: true, label:'${currentValue}°', unit:"F",
+		valueTile("temperature", "device.temperature", width: 2, height: 2 /*, canChangeIcon: false, icon: "st.Home.home1"*/) {
+            state("temperature", defaultState: true, label:'${currentValue}°', unit:"dF",
 				backgroundColors: getTempColors()
 			)
 		}
@@ -176,7 +177,7 @@ metadata {
 			state "default", action:"noOp", label: '${currentValue}', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
 		}
 
-		main (["temperature", "temperatureDisplay",])
+		main ('temperature') //, "temperatureDisplay",])
 		details(   ['temperatureDisplay',
         			'currentProgramIcon', 	'doors', 'windows', 'vents', 'SmartRoom',
                     						'Home',  'Away',  'Sleep', 'refresh'])
@@ -206,14 +207,14 @@ void updated() {
 void noOp() {}
 
 def generateEvent(Map results) {
-	LOG("generateEvent(): parsing data ${results}",2,null,'trace')
+	LOG("generateEvent(): parsing data ${results}",3,null,'trace')
 	def tempScale = getTemperatureScale()
-    def precision = device.currentValue("decimalPrecision")
-    if (!precision) precision = (tempScale == "C") ? 1 : 0
+    def precision = device.currentValue('decimalPrecision')
+    if (!precision) precision = (tempScale == 'C') ? 1 : 0
     def isConnected = (device.currentValue('currentProgramName') != 'Offline')
 
 	if(results) {
-		String tempDisplay = ""
+		String tempDisplay = ''
 		results.each { name, value ->			
 			def linkText = getLinkText(device)
 			def isChange = false
@@ -224,8 +225,8 @@ def generateEvent(Map results) {
 			if (name=='temperature')  {
                 if ((sendValue == 'unknown') || !isConnected) {
                 	// We are OFFLINE
-                    LOG( "Warning: Remote Sensor (${name}) is OFFLINE. Please check the batteries or move closer to the thermostat.", 2, null, 'warn')
-                    sendEvent( name: "temperatureDisplay", linkText: linkText, value: "Offline", handlerName: "temperatureDisplay", descriptionText: "Display temperature is ${tempDisplay}", isStateChange: true, displayed: false)
+                    // LOG( "Warning: Remote Sensor (${name}) is OFFLINE. Please check the batteries or move closer to the thermostat.", 2, null, 'warn')
+                    sendEvent( name: 'temperatureDisplay', linkText: linkText, value: '451°', handlerName: "temperatureDisplay", descriptionText: 'Fahrenheit 451', /* isStateChange: true, */ displayed: false)
 					event = [name: name, linkText: linkText, descriptionText: "Sensor is Offline", handlerName: name, value: sendValue, isStateChange: true, displayed: true]
                 } else {
                 	// must be online  
@@ -239,15 +240,15 @@ def generateEvent(Map results) {
                     	} else {
 							tempDisplay = String.format( "%.${precision.toInteger()}f", value.toDouble().round(precision.toInteger())) + '°'
                     	}
-                        sendEvent( name: "temperatureDisplay", linkText: linkText, value: "${tempDisplay}", handlerName: "temperatureDisplay", descriptionText: "Display temperature is ${tempDisplay}", isStateChange: true, displayed: false)
+                        sendEvent( name: 'temperatureDisplay', linkText: linkText, value: "${tempDisplay}", handlerName: 'temperatureDisplay', descriptionText: "Display temperature is ${tempDisplay}", isStateChange: true, displayed: false)
 						event = [name: name, linkText: linkText, descriptionText: "Temperature is ${tempDisplay}", handlerName: name, value: sendValue, isStateChange: true, displayed: true]
                     }
                 }
 			} else if (name=='motion') {        
             	if ( (sendValue == 'unknown') || !isConnected) {
                 	// We are OFFLINE
-                    LOG( "Warning: Remote Sensor (${name}) is OFFLINE. Please check the batteries or move closer to the thermostat.", 2, null, 'warn')
-                    sendValue = "unknown"
+                    LOG( "Warning: This Sensor is OFFLINE.", 2, null, 'warn')
+                    sendValue = 'unknown'
                 }
                 
 				isChange = isStateChange(device, name, sendValue.toString())
@@ -259,7 +260,7 @@ def generateEvent(Map results) {
 					event = [name: name, linkText: linkText, value: sendValue, descriptionText: 'Program is '+sendValue.replaceAll(':',''), isStateChange: true, displayed: true]
                 }
             } else if (name=='checkInterval') {
-            	event = [name: name, value: sendValue, isStateChange: true, displayed: false]
+            	event = [name: name, value: sendValue, /*isStateChange: true,*/ displayed: false]
             } else { // must be one of Home, Away, Sleep, vents, doors, windows, SmartRoom, decimalPrecision or thermostatId
 				isChange = isStateChange(device, name, sendValue)
 				if (isChange) event = [name: name, linkText: linkText, handlerName: name, value: sendValue, isStateChange: true, displayed: false]
@@ -375,7 +376,7 @@ def getTempColors() {
 
 	colorMap = [
 		// Celsius Color Range
-		[value: 0, color: "#1e9cbb"],
+/*		[value: 0, color: "#1e9cbb"],
 		[value: 15, color: "#1e9cbb"],
 		[value: 19, color: "#1e9cbb"],
 
@@ -398,8 +399,24 @@ def getTempColors() {
 		[value: 76, color: "#d04e00"],
 		[value: 95, color: "#d04e00"],
 		[value: 99, color: "#d04e00"],
-        
-        [value: 451, color: "#ffa81e"] // Nod to the book and temp that paper burns. Used to catch when the device is offline
+ */
+ 							[value: 0, color: "#153591"],
+							[value: 7, color: "#1e9cbb"],
+							[value: 15, color: "#90d2a7"],
+							[value: 23, color: "#44b621"],
+							[value: 28, color: "#f1d801"],
+							[value: 35, color: "#d04e00"],
+							[value: 37, color: "#bc2323"],
+							// Fahrenheit
+							[value: 40, color: "#153591"],
+							[value: 44, color: "#1e9cbb"],
+							[value: 59, color: "#90d2a7"],
+							[value: 74, color: "#44b621"],
+							[value: 84, color: "#f1d801"],
+							[value: 95, color: "#d04e00"],
+							[value: 96, color: "#bc2323"],
+
+        [value: 451, color: "#ff4d4d"] // Nod to the book and temp that paper burns. Used to catch when the device is offline
 	]
 }
 
