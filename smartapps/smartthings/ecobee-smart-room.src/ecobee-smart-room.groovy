@@ -20,8 +20,9 @@
  *	1.0.0 - Final prep for General Release
  *	1.0.1 - Edit LOG and setup for consistency
  *	1.0.2 - Fixed initialization
+ *	1.0.3 - Updated settings and TempDisable handling
  */
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "ecobee Smart Room Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -49,7 +50,7 @@ def mainPage() {
         }
         
         section(title: "Smart Room Ecobee Sensor(s)") {
-        	if (settings.tempDisable == true) {
+        	if (settings.tempDisable) {
             	paragraph "WARNING: Temporarily Disabled as requested. Turn back on to Enable handler."
             } else {
             	paragraph("A Smart Room is defined by one or more Ecobee Sensors")
@@ -61,45 +62,47 @@ def mainPage() {
             }
 		}
 		
-        section(title: "Smart Room Doors") {
-            paragraph("Smart Room Activation is controlled by how long doors are left open or closed")
-            input(name: "theDoors", title: "Select Door contact sensor(s)", type: "capability.contactSensor", required: true, multiple: true, submitOnChange: true)
-            if (theDoors) {
-            	// paragraph("How long should a door be open before the Smart Room is Activated?")
-            	input(name: "doorOpenMinutes", title: "Open door Activation delay (minutes)?", type: "number", required: true, defaultValue: 5, description: '5', range: "5..60")
-            	// paragraph("How long should the door${theDoors.size()>1?'s':''} be closed before the room is Inactive (occupied rooms will not be deactivated)?")
-            	input(name: "doorClosedHours", title: "Closed door Deactivation delay (hours)?", type: "number", required: true, defaultValue: 12, description: '12', range: "1..24")
-            }
-		}
+        if (!settings.tempDisable) {
+        	section(title: "Smart Room Doors") {
+            	paragraph("Smart Room Activation is controlled by how long doors are left open or closed")
+            	input(name: "theDoors", title: "Select Door contact sensor(s)", type: "capability.contactSensor", required: true, multiple: true, submitOnChange: true)
+            	if (settings.theDoors) {
+            		// paragraph("How long should a door be open before the Smart Room is Activated?")
+            		input(name: "doorOpenMinutes", title: "Open door Activation delay (minutes)?", type: "number", required: true, defaultValue: 5, description: '5', range: "5..60")
+            		// paragraph("How long should the door${theDoors.size()>1?'s':''} be closed before the room is Inactive (occupied rooms will not be deactivated)?")
+            		input(name: "doorClosedHours", title: "Closed door Deactivation delay (hours)?", type: "number", required: true, defaultValue: 12, description: '12', range: "1..24")
+            	}
+			}
         
-       	section(title: "Smart Room Windows (optional)") {
-        	paragraph("Windows will temporarily deactivate a Smart Room while they are open")
-            input(name: "theWindows", type: "capability.contactSensor", title: "Which Window contact sensor(s)? (optional)", required: false, multiple: true)
-        }
+       		section(title: "Smart Room Windows (optional)") {
+        		paragraph("Windows will temporarily deactivate a Smart Room while they are open")
+            	input(name: "theWindows", type: "capability.contactSensor", title: "Which Window contact sensor(s)? (optional)", required: false, multiple: true)
+        	}
         
-        section(title:"Smart Room Motion Sensors (optional)") {
-        	paragraph("Occupancy within the room will stop the Smart Room from being deactivated while the door${theDoors?.size()>1?'s are':' is'} closed")
-            input(name:"moreMotionSensors", type: "capability.motionSensor", title: "Select additional motion sensors?", required: false, multiple: true, submitOnChange: false)
-        }
+        	section(title:"Smart Room Motion Sensors (optional)") {
+        		paragraph("Occupancy within the room will stop the Smart Room from being deactivated while the door${theDoors?.size()>1?'s are':' is'} closed")
+            	input(name:"moreMotionSensors", type: "capability.motionSensor", title: "Select additional motion sensors?", required: false, multiple: true, submitOnChange: false)
+        	}
        
-        section(title: "Smart Room Vents (optional)") {
-        	paragraph("You can have specified Econet or Keen vents opened while a Smart Room is Active, and closed when Inactive")
-            input(name: "theEconetVents", type: "device.econetVent", title: "Control which EcoNet Vent(s)?", required: false, multiple: true, submitOnChange: true)
-            input(name: "theKeenVents", type: "device.keenHomeSmartVent", title: "Control which Keen Home Smart Vent(s)?", required: false, multiple:true, submitOnChange: true)
-            if (theEconetVents || theKeenVents) {
-            	paragraph("Fully closing too many vents at once may be detrimental to your HVAC system. You may want to define a minimum closed percentage")
-            	input(name: "minimumVentLevel", type: "number", title: "Minimum vent level when closed?", required: true, defaultValue:0, description: '0', range: "0..100")
-            }
-        }
+        	section(title: "Smart Room Vents (optional)") {
+        		paragraph("You can have specified Econet or Keen vents opened while a Smart Room is Active, and closed when Inactive")
+            	input(name: "theEconetVents", type: "device.econetVent", title: "Control which EcoNet Vent(s)?", required: false, multiple: true, submitOnChange: true)
+            	input(name: "theKeenVents", type: "device.keenHomeSmartVent", title: "Control which Keen Home Smart Vent(s)?", required: false, multiple:true, submitOnChange: true)
+            	if (settings.theEconetVents || settings.theKeenVents) {
+            		paragraph("Fully closing too many vents at once may be detrimental to your HVAC system. You may want to define a minimum closed percentage")
+            		input(name: "minimumVentLevel", type: "number", title: "Minimum vent level when closed?", required: true, defaultValue:0, description: '0', range: "0..100")
+            	}
+        	}
         
-      	section("Smart Room Notifications (optional)") {
-        	input(name: "notify", type: "boolean", title: "Notify on Activations?", required: false, defaultValue: false, submitOnChange: true)
-            if (notify) {
-        		input(name: "recipients", type: "contact", title: "Send notifications to", required: notify) {
-                	input(name: "pushNotify", type: "boolean", title: "Send push notifications?", required: true, defaultValue: false)
-                }
-            }
-            paragraph("(A notification is always sent to the Hello Home log whenever a Smart Room is activated or de-activated)")
+      		section("Smart Room Notifications (optional)") {
+        		input(name: "notify", type: "boolean", title: "Notify on Activations?", required: false, defaultValue: false, submitOnChange: true)
+            	if (settings.notify) {
+        			input(name: "recipients", type: "contact", title: "Send notifications to", required: notify) {
+                		input(name: "pushNotify", type: "boolean", title: "Send push notifications?", required: true, defaultValue: false)
+                	}
+            	}
+            	paragraph("(A notification is always sent to the Hello Home log whenever a Smart Room is activated or de-activated)")
+        	}
         }
         	
 		section(title: "Temporarily Disable?") {
