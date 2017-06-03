@@ -16,8 +16,9 @@
  *	1.0.1 - Initial Release
  *	1.0.2 - Misc optimizations and logging changes
  *	1.0.3 - Correct preferences page naming
+ *	1.0.4 - Updated settings and TempDisable handling
  */
-def getVersionNum() { return "1.0.3" }
+def getVersionNum() { return "1.0.4" }
 private def getVersionLabel() { return "ecobee Smart Vents Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -45,7 +46,7 @@ def mainPage() {
         }
         
         section(title: "Smart Vents Temperature Sensor(s)") {
-        	if (settings.tempDisable == true) {
+        	if (settings.tempDisable) {
             	paragraph "WARNING: Temporarily Disabled as requested. Turn back on to Enable handler."
             } else {
             	paragraph("Select temperature sensors for this handler. If you select multiple sensors, the temperature will be averaged across all of them.")
@@ -53,36 +54,38 @@ def mainPage() {
             }
 		}
         
-       	section(title: "Smart Vents Windows (optional)") {
-        	paragraph("Windows will temporarily deactivate Smart Vents while they are open")
-            input(name: "theWindows", type: "capability.contactSensor", title: "Which Window contact sensor(s)? (optional)", required: false, multiple: true)
-        }
+        if (!settings.tempDisable) {
+       		section(title: "Smart Vents Windows (optional)") {
+        		paragraph("Windows will temporarily deactivate Smart Vents while they are open")
+            	input(name: "theWindows", type: "capability.contactSensor", title: "Which Window contact sensor(s)? (optional)", required: false, multiple: true)
+        	}
        
-        section(title: "Smart Vents") {
-        	paragraph("Specified Econet or Keen vents will be opened until target temperature is achieved, and then closed")
-            input(name: "theEconetVents", type: "device.econetVent", title: "Control which EcoNet Vent(s)?", required: false, multiple: true, submitOnChange: true)
-            input(name: "theKeenVents", type: "device.keenHomeSmartVent", title: "Control which Keen Home Smart Vent(s)?", required: false, multiple:true, submitOnChange: true)
-            if (theEconetVents || theKeenVents) {
-            	paragraph("Fully closing too many vents at once may be detrimental to your HVAC system. You may want to define a minimum closed percentage")
-            	input(name: "minimumVentLevel", type: "number", title: "Minimum vent level when closed?", required: true, defaultValue:10, description: '10', range: "0..100")
-            }
-        }
+        	section(title: "Smart Vents") {
+        		paragraph("Specified Econet or Keen vents will be opened until target temperature is achieved, and then closed")
+            	input(name: "theEconetVents", type: "device.econetVent", title: "Control which EcoNet Vent(s)?", required: false, multiple: true, submitOnChange: true)
+            	input(name: "theKeenVents", type: "device.keenHomeSmartVent", title: "Control which Keen Home Smart Vent(s)?", required: false, multiple:true, submitOnChange: true)
+            	if (settings.theEconetVents || settings.theKeenVents) {
+            		paragraph("Fully closing too many vents at once may be detrimental to your HVAC system. You may want to define a minimum closed percentage")
+            		input(name: "minimumVentLevel", type: "number", title: "Minimum vent level when closed?", required: true, defaultValue:10, description: '10', range: "0..100")
+            	}
+        	}
         
-		section(title: "Smart Vents: Thermostat") {
-			paragraph("Specify which thermostat to monitor for heating/cooling events")
-			input(name: "theThermostat", type: "capability.thermostat", title: "Select thermostat", multiple: false, required: true, submitOnChange: true)
-		}
-		
-		section(title: "Target Temperature") {
-			input(name: "useThermostat", type: "boolean", title: "Follow temps on theromostat${theThermostat?' '+theThermostat.displayName:''}?", required: true, defaultValue: true, submitOnChange: true)
-			if (!useThermostat) {
-				input(name: "heatingSetpoint", type: "number", title: "Target heating setpoint?", required: true)
-				input(name: "coolingSetpoint", type: "number", title: "Target cooling setpoint?", required: true)
+			section(title: "Smart Vents: Thermostat") {
+				paragraph("Specify which thermostat to monitor for heating/cooling events")
+				input(name: "theThermostat", type: "capability.thermostat", title: "Select thermostat", multiple: false, required: true, submitOnChange: true)
 			}
-		}
+		
+			section(title: "Target Temperature") {
+				input(name: "useThermostat", type: "boolean", title: "Follow temps on theromostat${theThermostat?' '+theThermostat.displayName:''}?", required: true, defaultValue: true, submitOnChange: true)
+				if (!settings.useThermostat) {
+					input(name: "heatingSetpoint", type: "number", title: "Target heating setpoint?", required: true)
+					input(name: "coolingSetpoint", type: "number", title: "Target cooling setpoint?", required: true)
+				}
+			}
+        }
         	
 		section(title: "Temporarily Disable?") {
-        	input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
+        	input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", description: "", defaultValue: false, submitOnChange: true)                
         }
         
         section (getVersionLabel())
