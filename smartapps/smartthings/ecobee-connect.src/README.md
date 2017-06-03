@@ -1,5 +1,7 @@
-Ecobee Thermostat SmartApp(s) and related Device Types for use with the SmartThings Hub
+Ecobee Thermostat SmartApp(s) and Device Type Handlers
 ======================================================
+Now with Ask Alexa Message Queue Integration!
+---------------------------------------------
 
 >NOTE: This version of Ecobee Thermostat support and integration for SmartThings has been developed as an extension of the amazing contributions originally created by Sean Stryker (StrykerSKS). This README file is an edited/updated version of Sean's, modified to reflect the enhancements AND the GitHub paths/locations for those wanting to use my version. I have NOT yet updated all the screen shots - these currently reflect the UI of Sean's version, and not mine.
 
@@ -135,8 +137,21 @@ The primary user interface on a day-to-day basis will be two different types of 
     
     This implementation avoids the complexity by supporting only a single depth of Hold: events - whenever you execute a Resume you reset the thermostat to run the currently scheduled Program.
         
+<b>Ask Alexa Message Queue Support</b>
 
-Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below. 
+ - For users of Michael Struck's most awesome Ask Alexa integration for SmartThings <http://thingsthataresmart.wiki/index.php?title=Ask_Alexa>
+ 	- you can now configure your Ecobee Alerts and Reminders to be sent to Ask Alexa Message Queues. 
+ 	- This is enabled in a new Ask Alexa preferences page in Ecobee (Connect) where you can specify the target Message Queue(s). 
+	- You can also specify an expiration time for Alerts so that they are removed from Ask Alexa after a specified period of time.
+
+NOTE: You will not be able to configure Ask Alexa support until you have fully installed Ask Alexa <b>AND</b> created at least 1 custom Message Queue, as the Primary Queue is being deprecated.
+
+- The current implementation does not support acknowledging of messages directly via Ask Alexa, but when the Alert/Reminder is acknowledged (on the thermostat or in the Ecobee application/web site) they are also removed from the Ask Alexa Message Queue.
+
+- This feature will evolve over the coming months to include more control over what gets sent to Ask Alexa and to support Notifications Only. So stay tuned!
+
+Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below (old versions).
+------------------------------------------------------------------------------------
 
 `Ecobee Thermostat` Device |  `Ecobee Thermostat` Device w/ Annotation
 :-------------------------:|:-------------------------:
@@ -166,6 +181,7 @@ The SmartApp provides the following capabilities:
   - Include Thermostats as a separate Ecobee Sensor (useful in order to expose the true temperature reading and not just the average temperature shown on the thermostat, e.g. for Smart Vent input)
   - Monitor external devices to drive additional polling and watchdog events
   - Delay timer value after pressing setpoint arrows (to allow multiple arror presses before calling the Ecobee APIs)
+- Set Ask Alexa Message Queue integration preferences
 - Select Polling and Watchdog Devices (if enabled in Preferences)
 - Debug Dashboard (if Debug Level is set to 5)
 
