@@ -52,7 +52,7 @@
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.3" }
+def getVersionNum() { return "1.1.3a" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -342,7 +342,7 @@ def askAlexaPage() {
                 	input(name: 'listOfMQs', type: 'enum', title: 'Send Alerts to these Ask Alexa Message Queues', options: atomicState.askAlexaMQ, submitOnChange: true, 
                     		multiple: true, required: true)
                 	input(name: 'expire', type: 'number', title: 'Expire Alerts after how many hours (optional)?', submitOnChange: true, required: false, range: "1..*")
-                    input(name: 'collapseAAA', type: 'bool', title: 'Collapse identical Alerts from multiple thermostats?', defaultValue: false, submitOnChange: true)
+                    // input(name: 'collapseAAA', type: 'bool', title: 'Collapse identical Alerts from multiple thermostats?', defaultValue: false, submitOnChange: true)
             	}
         	}
         }
