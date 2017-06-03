@@ -21,8 +21,9 @@
  * 1.0.0 - Final preparation for General Release
  * 1.0.1 - Updated LOG and setup for consistency
  * 1.0.2 - Fixed Ecobee Program changes when using Permanent/Indefinite or Default holdType
+ * 1.0.3 - Updated settings and Disabled handling
  */
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -56,11 +57,12 @@ def mainPage() {
         		input ("myThermostats", "capability.Thermostat", title: "Pick Ecobee Thermostat(s)", required: true, multiple: true, submitOnChange: true)            
 			}
         }
-            
-        section(title: "Select ST Mode or Routine, or Ecobee Program") {
-        	// Settings option for using Mode or Routine
-            input(name: "modeOrRoutine", title: "Use Mode Change, Routine Execution or Ecobee Program: ", type: "enum", required: true, multiple: false, description: "Tap to choose...", metadata:[values:["Mode", "Routine", "Ecobee Program"]], submitOnChange: true)
-		}
+        
+        if (!settings.tempDisable) {
+        	section(title: "Select ST Mode or Routine, or Ecobee Program") {
+        		// Settings option for using Mode or Routine
+            	input(name: "modeOrRoutine", title: "Use Mode Change, Routine Execution or Ecobee Program: ", type: "enum", required: true, multiple: false, description: "Tap to choose...", metadata:[values:["Mode", "Routine", "Ecobee Program"]], submitOnChange: true)
+			}
         
 	        if (myThermostats?.size() > 0) {
             	if(settings.modeOrRoutine == "Mode") {
@@ -121,9 +123,10 @@ def mainPage() {
                     } // End else Program --> Mode/Routine
                 } // End of "Actions" section
             } // End if myThermostats size
-            section(title: "Temporarily Disable?") {
-            	input(name: "tempDisable", title: "Temporarily Disable Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
-        	}
+        }   
+        section(title: "Temporarily Disable?") {
+           	input(name: "tempDisable", title: "Temporarily Disable Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
+        }
         
         section (getVersionLabel())
     }
