@@ -15,9 +15,10 @@
  *
  *	1.0.0 - Final prep for General Release
  *	1.0.1 - Edits to LOG and setup for consistency
+ *	1.0.2 - Updated settings and TempDisable handling
  *
  */
-def getVersionNum() { return "1.0.1" }
+def getVersionNum() { return "1.0.2" }
 private def getVersionLabel() { return "ecobee smartZones Version ${getVersionNum()}" }
 
 definition(
@@ -45,16 +46,16 @@ def mainPage() {
         }
         
         section(title: "Select Master Thermostat") {
-        	if(settings.tempDisable == true) paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler."
-        	input ("masterThermostat", "capability.Thermostat", title: "Pick Master Ecobee Thermostat", required: true, multiple: false, submitOnChange: true)            
+        	if(settings.tempDisable) { paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler."}
+        	else {input ("masterThermostat", "capability.Thermostat", title: "Pick Master Ecobee Thermostat", required: true, multiple: false, submitOnChange: true)}            
 		}
         
-        section(title: "Select Slave Thermostats") {
-        	// Settings option for using Mode or Routine
-            input(name: "slaveThermostats", title: "Pick Slave Ecobee Thermostat(s)", type: "capability.Thermostat", required: true, multiple: true, submitOnChange: true)
+        if (!settings.tempDisable) {
+        	section(title: "Select Slave Thermostats") {
+        		// Settings option for using Mode or Routine
+            	input(name: "slaveThermostats", title: "Pick Slave Ecobee Thermostat(s)", type: "capability.Thermostat", required: true, multiple: true, submitOnChange: true)
+			}
 		}
-		
-		// section(title: "Fan Only" ){}
         
 		section(title: "Temporarily Disable?") {
         	input(name: "tempDisable", title: "Temporarily Disable Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
