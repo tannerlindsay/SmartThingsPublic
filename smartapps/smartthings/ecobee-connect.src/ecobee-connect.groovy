@@ -44,12 +44,15 @@
  *	1.0.13-	 Improved Health Check reliability
  *	1.0.14-	 Logging optimizations
  *	1.0.15-	 Added new Smart Switch/Dimmer/Vent Helper, updated Open Contacts Helper to also support Switches
+ *	1.1.1 -	 Preparations for Ecobee Alerts support and Ask Alexa integrations
+ *	1.1.2 -  Split data collection and event generation into 2 threads to support more tstats & more sensors (within the 20ms limit)
+ *	1.1.3 -	 Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting 
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.0.15" }
+def getVersionNum() { return "1.1.3" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -96,7 +99,8 @@ preferences {
 	page(name: "authPage")
 	page(name: "thermsPage")
 	page(name: "sensorsPage")
-    page(name: "preferencesPage")    
+    page(name: "preferencesPage")
+    page(name: "askAlexaPage")
     page(name: "addWatchdogDevicesPage")
     page(name: "helperSmartAppsPage")    
     // Part of debug Dashboard
@@ -117,6 +121,10 @@ def mainPage() {
 	def deviceHandlersInstalled 
     def readyToInstall 
     
+    // Request the Ask Alexa Message Queue list as early as possible (isn't a problem if Ask Alexa isn't installed)
+    subscribe(location, "askAlexaMQ", askAlexaMQHandler)
+    sendLocationEvent(name: "askAlexaMQRefresh", value: "refresh")
+        
     // Only create the dummy devices if we aren't initialized yet
     if (!atomicState.initialized) {
     	deviceHandlersInstalled = testForDeviceHandlers()
@@ -175,7 +183,9 @@ def mainPage() {
 	        section("Preferences") {
     	    	href ("preferencesPage", title: "Preferences", description: "Tap to review SmartApp settings.")
                 LOG("In Preferences page section after preferences line", 5, null, "trace")
+                href ("askAlexaPage", title: "Ask Alexa", description: "Tap to review Ask Alexa integration.")
         	}
+            
             if( settings.useWatchdogDevices == true ) {
             	section("Extra Poll and Watchdog Devices") {
                 	href ("addWatchdogDevicesPage", title: "Watchdog Devices", description: "Tap to select Poll and Watchdog Devices.")
@@ -310,6 +320,33 @@ def sensorsPage() {
            }
 	    }        
 	}
+}
+
+def askAlexaPage() {
+	dynamicPage(name: "askAlexaPage", title: "Ask Alexa Integration", nextPage: "") {
+
+        section('') {
+        	if (atomicState.askAlexaMQ == null) {
+        		paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
+                		  title: 'Ask Alexa not Detected!', 
+                          		 'Ask Alexa either isn\'t installed, or no Message Queues are defined (sending to the deprecated Primary Message Queue is not supported).\n\n' +
+                				 'Please verify your Ask Alexa settings and then return here to complete the integration.')
+        	} else {
+        		paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
+            			  title: 'Ask Alexa Integration', '')
+        		input(name: 'askAlexa', type: 'bool', title: 'Send Ecobee Alerts to Ask Alexa?', required: true, submitOnChange: true, defaultValue: false)
+            	if (settings.askAlexa) {
+            		if (!settings.listOfMQs || (settings.listOfMQs?.size() == 0)) {
+                		paragraph('Please select one or more Ask Alexa Message Queues below (sending to the deprecated Primary Message Queue is not supported):')
+                	}
+                	input(name: 'listOfMQs', type: 'enum', title: 'Send Alerts to these Ask Alexa Message Queues', options: atomicState.askAlexaMQ, submitOnChange: true, 
+                    		multiple: true, required: true)
+                	input(name: 'expire', type: 'number', title: 'Expire Alerts after how many hours (optional)?', submitOnChange: true, required: false, range: "1..*")
+                    input(name: 'collapseAAA', type: 'bool', title: 'Collapse identical Alerts from multiple thermostats?', defaultValue: false, submitOnChange: true)
+            	}
+        	}
+        }
+    }
 }
 
 def preferencesPage() {
@@ -472,6 +509,27 @@ private def Boolean testForDeviceHandlers() {
     return success
 }
 // End Preference Pages Helpers
+
+// Ask Alexa Helpers
+private String getMQListNames() {
+	if (!settings.listOfMQs || (settings.listOfMQs?.size() == 0)) return ''
+	def temp = []
+   	settings.listOfMQs?.each { 
+    	temp << atomicState.askAlexaMQ?.getAt(it).value
+    }
+    return ((temp.size() > 1) ? ('(' + temp.join(", ") + ')') : (temp.toString()))?.replaceAll("\\[",'').replaceAll("\\]",'')
+}
+
+def askAlexaMQHandler(evt) {
+	LOG("askAlexaMQHandler ${evt?.name} ${evt?.value}",4,null,'trace')
+    if (!evt) return
+    switch (evt.value) {
+	    case "refresh":
+		    atomicState.askAlexaMQ = evt.jsonData && evt.jsonData?.queues ? evt.jsonData.queues : []
+        break
+    }
+}
+// End of Ask Alexa Helpers
 
 // OAuth Init URL
 def oauthInitUrl() {
@@ -750,9 +808,6 @@ def installed() {
 
 def updated() {	
     LOG("Updated with settings: ${settings}", 4)	
-    // atomicState.Events = [:]
-    // atomicState.Eventss = [:]
-    // atomicState.aTestMap = [:]
     
     if (!atomicState.atomicMigrate) {
     	LOG("updated() - Migrating state to atomicState...", 2, null, "warn")        
@@ -793,7 +848,9 @@ def initialize() {
     }    
     
     subscribe(app, appHandler)
-
+    subscribe(location, "askAlexaMQ", askAlexaMQHandler)
+	// if (!settings.askAlexa) atomicState.askAlexaAlerts = null
+    
     def nowTime = now()
     def nowDate = getTimestamp()
     
@@ -856,6 +913,28 @@ def initialize() {
 	if (settings.ecobeesensors?.size() > 0) { aOK = aOK && createChildrenSensors() }    
     deleteUnusedChildren()
    
+   	// Clear out all atomicState object collections (in case a thermostat was deleted or replaced, so we don't slog around useless old data)
+    atomicState.alerts = [:]
+    atomicState.askAlexaAlerts = [:]
+    atomicState.askAlexaAppAlerts = [:]
+    atomicState.changeCloud = [:]
+    atomicState.changeConfig = [:]
+    atomicState.changeEquip = [:]
+    atomicState.changeNever = [:]
+    atomicState.changeOften = [:]
+    atomicState.changeRarely = [:]
+    atomicState.currentProgramName = [:]
+    atomicState.equipmentStatus = [:]
+    atomicState.events = [:]
+    atomicState.extendedRuntime = [:]
+    atomicState.oemCfg = [:]
+    atomicState.program = [:]
+    atomicState.runningEvent = [:]
+    atomicState.runtime = [:]
+    atomicState.settings = [:]
+    atomicState.statLocation = [:]
+    atomicState.weather = [:]
+    
 	// Initial poll()
     if (settings.thermostats?.size() > 0) { pollInit() }
     
@@ -946,6 +1025,7 @@ def appHandler(evt) {
 	if (evt.value == 'touch') {
     	LOG('appHandler(touch) event, forced poll',2,null,'info')
 		atomicState.forcePoll = true
+        atomicState.getWeather = true	// update the weather also
     	pollChildren()
     }
 }
@@ -962,16 +1042,17 @@ private def deleteUnusedChildren() {
     	// Only delete those that are no longer in the list
         // This should be a combination of any removed thermostats and any removed sensors
         def allMyChildren = getAllChildDevices()
-        LOG("These are currently all of my childred: ${allMyChildren}", 5, null, "debug")
+        LOG("These are currently all of my childred: ${allMyChildren}", 4, null, "debug")
         
         // Update list of "eligibleSensors"       
         def childrenToKeep = (thermostats ?: []) + (atomicState.eligibleSensors?.keySet() ?: [])
         LOG("These are the children to keep around: ${childrenToKeep}", 4, null, "trace")
         
     	def childrenToDelete = allMyChildren.findAll { !childrenToKeep.contains(it.deviceNetworkId) }        
-        
-        LOG("Ready to delete these devices. ${childrenToDelete}", 4, null, "trace")
-		if (childrenToDelete.size() > 0) childrenToDelete?.each { deleteChildDevice(it.deviceNetworkId) } //inherits from SmartApp (data-management)    
+		if (childrenToDelete.size() > 0) {
+        	LOG("Ready to delete these devices. ${childrenToDelete}", 2, null, "warn")
+        	childrenToDelete?.each { deleteChildDevice(it.deviceNetworkId) } //inherits from SmartApp (data-management)    
+        }
     }    
 }
 
@@ -1251,8 +1332,10 @@ def pollInit() {
 	runIn(2, pollChildren, [overwrite: true]) 		// Hit the ecobee API for update on all thermostats, in 2 seconds
 }
 
-def pollChildren(deviceId = null) {  
-	if (debugLevel(4)) LOG("pollChildren() - deviceId ${deviceId}", 4, child, 'trace')
+def pollChildren(deviceId = null) {
+	def startMS = now()
+	boolean debugLevelFour = debugLevel(4)
+	if (debugLevelFour) LOG("pollChildren() - deviceId ${deviceId}", 4, child, 'trace')
     def forcePoll
     if (deviceId != null) {
     	atomicState.forcePoll = true
@@ -1261,7 +1344,7 @@ def pollChildren(deviceId = null) {
     	forcePoll = atomicState.forcePoll
     }
 
-	if (debugLevel(4)) LOG("=====> pollChildren() - atomicState.forcePoll(${forcePoll})  atomicState.lastPoll(${atomicState.lastPoll})  now(${now()})  atomicState.lastPollDate(${atomicState.lastPollDate})", 4, child, "trace")
+	if (debugLevelFour) LOG("=====> pollChildren() - atomicState.forcePoll(${forcePoll})  atomicState.lastPoll(${atomicState.lastPoll})  now(${now()})  atomicState.lastPollDate(${atomicState.lastPollDate})", 4, child, "trace")
     
 	if(apiConnected() == "lost") {
     	// Possibly a false alarm? Check if we can update the token with one last fleeting try...
@@ -1282,35 +1365,51 @@ def pollChildren(deviceId = null) {
     	LOG("pollChildren() - Nothing to poll as there are no thermostats currently selected", 1, null, "warn")
 		return true
     }    
-
+    
     // Check if anything has changed in the thermostatSummary (really don't need to call EcobeeAPI if it hasn't).
-    String thermostatsToPoll = (deviceId!=null) ? deviceId : getChildThermostatDeviceIdsString()
+    String thermostatsToPoll = deviceId ?: getChildThermostatDeviceIdsString()
     
-    boolean somethingChanged = forcePoll ? true : checkThermostatSummary(thermostatsToPoll)
+    boolean somethingChanged = forcePoll ?: checkThermostatSummary(thermostatsToPoll)
     if (!forcePoll) thermostatsToPoll = atomicState.changedThermostatIds
+    // def checkedMS = now()
     
-    String preText = getDebugLevel() <= 2 ? '' : 'pollChildren() - ' 
+    def alertsUpdated = false
+    String preText = debugLevel(2) ? '' : 'pollChildren() - ' 
     if (forcePoll || somethingChanged) {
+    	alertsUpdated = forcePoll || atomicState.alertsUpdated
         LOG("${preText}Requesting updates for thermostat${thermostatsToPoll.contains(',')?'s':''} ${thermostatsToPoll}${forcePoll?' (forced)':''}", 2, null, 'trace')
     	pollEcobeeAPI(thermostatsToPoll)  // This will update the values saved in the state which can then be used to send the updates
+        def polledMS = now()
+    	// log.debug "check: ${checkedMS-startMS}, poll: ${polledMS-checkedMS}, total: ${polledMS-startMS}"
+        def prepTime = (polledMS-startMS)
+        if (debugLevelFour) LOG("Completed prep (${prepTime}ms)",4,null,'trace')
+    	if (alertsUpdated) {
+        	if (prepTime > 11000) {	runIn(2, 'generateAlertsAndEvents') } else { generateAlertsAndEvents() }
+        } else {
+        	if (prepTime > 11000) {	runIn(2, 'generateTheEvents') } else { generateTheEvents() }
+        }    
 	} else {   	 
         LOG(preText+'No updates...', 2, null, 'trace')
-        return true
     }
-    
-    Integer numSensors = 0
-    if (forcePoll || somethingChanged) {
-		// Iterate over ONLY THE CHILDREN THAT HAVE DATA - this is MUCH faster than iterating over ALL the children, because
-        // we now only send changed data for changed thermostats
-        atomicState.thermostats?.each { DNI ->
-        	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
-        }
-        atomicState.remoteSensorsData?.each { DNI ->
-        	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
-        }
-	}
-    if (numSensors > 0) LOG("pollChildren() - Events transferred to ${numSensors} sensors", 3, null, 'info')
     return true
+}
+
+def generateAlertsAndEvents() {
+	generateTheEvents()
+    def startMS = now()
+    sendAlertEvents()
+    LOG("Sent alerts (${now()-startMS}ms)",4,null,'trace')
+}
+
+def generateTheEvents() {
+	def startMS = now()
+    atomicState.thermostats?.each { DNI ->
+    	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
+    }     
+    atomicState.remoteSensorsData?.each { DNI ->
+       	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
+    }
+    LOG("Sent events (${now()-startMS}ms)",4,null,'trace')
 }
 
 // enables child SmartApps to send events to child Smart Devices using only the DNI
@@ -1384,6 +1483,7 @@ private boolean checkThermostatSummary(thermostatIdsString) {
 				if (statusCode == 0) { 
                     def revisions = resp.data.revisionList
 					def thermostatUpdated = false
+                    def alertsUpdated = false
 					def runtimeUpdated = false
                     tstatsStr = ""
                     def latestRevisions = [:]
@@ -1400,18 +1500,22 @@ private boolean checkThermostatSummary(thermostatIdsString) {
                             
                         // check if the current tstat is updated
                         def tru = false
+                        def tau = false
                         def ttu = false
 						if (lastDetails) {			// if we have prior revision details
-							if (lastDetails[2] != latestDetails[2]) tru = true 
-							if (lastDetails[0] != latestDetails[0]) ttu = true 
-                        } else {					// no priors, assume both have been updated
+							if (lastDetails[2] != latestDetails[2]) tru = true 	// runtime
+                            if (lastDetails[1] != latestDetails[1]) tau = true	// alerts
+							if (lastDetails[0] != latestDetails[0]) ttu = true	// thermostat 
+                        } else {					// no priors, assume all have been updated
                             tru = true 
+                            tau = true
                             ttu = true
                         }
 
                         // update global flags (we update the superset of changes for all requested tstats)
-                        if (tru || ttu) {
+                        if (tru || tau || ttu) {
                             runtimeUpdated = (runtimeUpdated || tru)
+                            alertsUpdated = (alertsUpdated || tau)
                             thermostatUpdated = (thermostatUpdated || ttu)
                             result = true
                             tstatsStr = (tstatsStr=="") ? tstat : (tstatsStr.contains(tstat)) ? tstatsStr : tstatsStr + ",${tstat}"
@@ -1420,6 +1524,7 @@ private boolean checkThermostatSummary(thermostatIdsString) {
 					}
 					atomicState.latestRevisions = latestRevisions		// let pollEcobeeAPI update last with latest after it finishes the poll
                     atomicState.thermostatUpdated = thermostatUpdated	// Revised: settings, program, event, device
+                    atomicState.alertsUpdated = alertsUpdated			// Revised: alerts
 					atomicState.runtimeUpdated = runtimeUpdated			// Revised: runtime, equip status, remote sensors, weather?
                     atomicState.changedThermostatIds = tstatsStr    	// only these thermostats need to be requested in pollEcobeeAPI
 				}
@@ -1455,10 +1560,13 @@ private boolean checkThermostatSummary(thermostatIdsString) {
 }
 
 private def pollEcobeeAPI(thermostatIdsString = '') {
-	if (debugLevel(4)) LOG("=====> pollEcobeeAPI() entered - thermostatIdsString = ${thermostatIdsString}", 4, null, "info")
+	boolean debugLevelFour = debugLevel(4)
+    boolean debugLevelThree = debugLevel(3)
+	if (debugLevelFour) LOG("=====> pollEcobeeAPI() entered - thermostatIdsString = ${thermostatIdsString}", 4, null, "info")
 
 	boolean forcePoll = atomicState.forcePoll		// lightweight way to use atomicStates that we don't want to change under us
     boolean thermostatUpdated = atomicState.thermostatUpdated
+    boolean alertsUpdated = atomicState.alertsUpdated
     boolean runtimeUpdated = atomicState.runtimeUpdated
     boolean getWeather = atomicState.getWeather
     String preText = getDebugLevel() <= 2 ? '' : 'pollEcobeeAPI() - '
@@ -1480,13 +1588,14 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
         // log.debug "Shouldn't be checkingThermostatSummary() again!"
     	somethingChanged = checkThermostatSummary(thermostatIdsString)
         thermostatUpdated = atomicState.thermostatUpdated				// update these again after checkThermostatSummary
+        alertsUpdated = atomicState.alertsUpdated
     	runtimeUpdated = atomicState.runtimeUpdated
     }
     
     // if nothing has changed, and this isn't a forced poll, just return (keep count of polls we have skipped)
     // This probably can't happen anymore...shouldn't event be here if nothing has changed and not a forced poll...
     if (!somethingChanged && !forcePoll) {  
-    	if (debugLevel(4)) LOG("<===== Leaving pollEcobeeAPI() - nothing changed, skipping heavy poll...", 4 )
+    	if (debugLevelFour) LOG("<===== Leaving pollEcobeeAPI() - nothing changed, skipping heavy poll...", 4 )
        	return true		// act like we completed the heavy poll without error
 	} else {
        	// if getting the weather, get for all thermostats at the same time. Else, just get the thermostats that changed
@@ -1503,11 +1612,17 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
     String gw = '( equipmentStatus'
 	if (forcePoll || thermostatUpdated) {
 		jsonRequestBody += ',"includeSettings":"true","includeProgram":"true","includeEvents":"true"'
-		gw += ' thermostat program events'
+		gw += ' settings program events'
 	}
     if (forcePoll) {
-    	jsonRequestBody += ',"includeOemCfg":"true","includeLocation":"true"'
-        gw += ' oemCfg location'
+    	// oemCfg needed only for Carrier Cor, to determine if useSchedule is enabled - but if it isn't, we aren't of much use anyway
+        // so for now, don't bother getting oemCfg data  (BAB - May 24, 2017)
+    	jsonRequestBody += /*',"includeOemCfg":"true"*/ ',"includeLocation":"true"'
+        gw += /*' oemCfg */ ' location'
+    }
+    if (forcePoll || alertsUpdated) {
+    	jsonRequestBody += ',"includeAlerts":"true"'
+        gw += ' alerts'
     }
 	if (forcePoll || runtimeUpdated) {
 		jsonRequestBody += ',"includeRuntime":"true"'
@@ -1532,7 +1647,7 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
 		LOG("${preText}Getting ${gw} for thermostat${checkTherms.contains(',')?'s':''} ${checkTherms}", 2, null, 'info')
 	}
 	jsonRequestBody += '}}'   
-	if (debugLevel(4)) LOG("pollEcobeeAPI() - jsonRequestBody is: ${jsonRequestBody}", 4, null, 'trace')
+	if (debugLevelFour) LOG("pollEcobeeAPI() - jsonRequestBody is: ${jsonRequestBody}", 4, null, 'trace')
  
     def result = false
 	
@@ -1562,29 +1677,43 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                 def tempSensors = [:]
                 def tempEquipStat = [:]
                 def tempLocation = [:]
-                def tempOemCfg = [:]
+                // def tempOemCfg = [:]
+                def tempAlerts = [:]
                 
                 // collect the returned data into temporary individual caches (because we can't update individual Map items in an atomicState Map)
                 resp.data.thermostatList.each { stat ->
                 
 					String tid = stat.identifier.toString()
                     tidList += [tid]
-                    if (debugLevel(3)) LOG("pollEcobeeAPI() - Parsing data for thermostat ${tid}", 3, null, 'info')
+                    if (debugLevelThree) LOG("pollEcobeeAPI() - Parsing data for thermostat ${tid}", 3, null, 'info')
                     
 					tempEquipStat[tid] = stat.equipmentStatus 			// always store ("" is a valid return value)
                     
                     if (forcePoll || thermostatUpdated) {
                         if (stat.settings) tempSettings[tid] = stat.settings
-                        if (stat.program) tempProgram[tid] = stat.program
+                        
+                        if (stat.program) {		// tempProgram[tid] = stat.program}
+                        	stat.program.remove('schedule')	// for now, we don't need to slog around the schedule data
+                            tempProgram[tid] = stat.program
+                        }
                         if (stat.events) tempEvents[tid] = stat.events
                         if (stat.location) tempLocation[tid] = stat.location
-                        if (stat.oemCfg) tempOemCfg[tid] = stat.oemCfg
+                        // if (stat.oemCfg) tempOemCfg[tid] = stat.oemCfg
                     }
  					if (forcePoll || runtimeUpdated) {
  						if (stat.runtime) tempRuntime[tid] = stat.runtime
                         if (stat.extendedRuntime) tempExtendedRuntime[tid] = stat.extendedRuntime
-                        if (stat.remoteSensors) tempSensors[tid] = stat.remoteSensors 
-                        if (stat.weather) tempWeather[tid] = stat.weather
+                        if (stat.remoteSensors) tempSensors[tid] = stat.remoteSensors
+                        // let's don't copy all that weather info if the timeStamp hasn't changed... 
+                        if (stat.weather) {
+                            def shortWeather = [timestamp: stat.weather.timestamp,
+                            					temperature: stat.weather.forecasts[0].temperature.toString(),
+                            					weatherSymbol: stat.weather.forecasts[0].weatherSymbol.toString()]
+                            tempWeather[tid] = shortWeather
+                        }
+                    }
+                    if (forcePoll || alertsUpdated) {
+                    	tempAlerts[tid] = stat.alerts
                     }
                 }
 				
@@ -1607,10 +1736,10 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                    		if (atomicState.statLocation) tempLocation = atomicState.statLocation + tempLocation
                    		atomicState.statLocation = tempLocation
                 	}
-                    if (tempOemCfg != [:]) {
-                   		if (atomicState.oemCfg) tempOemCfg = atomicState.oemCfg + tempOemCfg
-                   		atomicState.oemCfg = tempOemCfg
-                	}
+                    // if (tempOemCfg != [:]) {
+                   	// 	if (atomicState.oemCfg) tempOemCfg = atomicState.oemCfg + tempOemCfg
+                   	// 	atomicState.oemCfg = tempOemCfg
+                	// }
                 	if (tempSettings != [:]) {
                    		if (atomicState.settings) tempSettings = atomicState.settings + tempSettings 
                    		atomicState.settings = tempSettings
@@ -1659,15 +1788,21 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                     	atomicState.weather = tempWeather
                     }
 				}
+                if (forcePoll || alertsUpdated) {
+                	if (tempAlerts != [:]) {
+                    	if (atomicState.alerts) tempAlerts = atomicState.alerts + tempAlerts
+                        atomicState.alerts = tempAlerts
+                    }
+                }
                 
                 // OK, Everything is safely stored, let's get to parsing the objects and finding the actual changed data
                 updateLastPoll()
-                LOG('pollEcobeeAPI() - Parsing complete', 3, null, 'info')
+                if (debugLevelThree) LOG('pollEcobeeAPI() - Parsing complete', 3, null, 'info')
 
                 // Update the data and send it down to the devices as events
                 if (settings.thermostats) updateThermostatData()  	// update thermostats first (some sensor data is dependent upon thermostat changes)
 				if (settings.ecobeesensors) updateSensorData()		// Only update configured sensors (and then only if they have changes)
-                
+                // if (forcePoll || alertsUpdated) /*updateAlertsData() */ runIn(20, "updateAlertsData", [overwrite: true])	// Update alerts asynchronously
                 
                 // pollChildren() will actually send all the events we just created, once we return
 				// just a bit more housekeeping...
@@ -1675,8 +1810,9 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                 atomicState.lastRevisions = atomicState.latestRevisions		// copy the Map
                	if (forcePoll) atomicState.forcePoll = false				// it's ok to clear the flag now
                 if (runtimeUpdated) atomicState.runtimeUpdated = false
-                if (thermostatUpdated) { atomicState.thermostatUpdated = false; atomicState.hourlyForcedUpdate = 0 }
+                if (thermostatUpdated) { atomicState.thermostatUpdated = false; /* atomicState.hourlyForcedUpdate = 0 */ }
                 if (runtimeUpdated && getWeather) atomicState.getWeather = false
+                if (alertsUpdated) atomicState.alertsUpdated = false
                 
                 // Not sure why this is here...it just tells the children that we are once again connected to the Ecobee API Cloud
                 if (apiConnected() != "full") {
@@ -1689,7 +1825,7 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                 if (preText == '') {	// avoid calling debugLevel() again) {
 					LOG("Updated ${numStats} thermostat${(numStats>1)?'s':''}: ${tidList}", 2, null, 'info')
                 } else {
-                	LOG("pollEcobeeAPI() - Updated ${numStats} thermostat${(numStats>1)?'s':''}: ${tNames}/${tidList} ${atomicState.thermostats}", 4, null, 'info')
+                	if (debugLevelFour) LOG("pollEcobeeAPI() - Updated ${numStats} thermostat${(numStats>1)?'s':''}: ${tNames}/${tidList} ${atomicState.thermostats}", 4, null, 'info')
 				}
 			} else {
 				LOG("${preText}Polling children & got http status ${resp.status}", 1, null, "error")
@@ -1709,9 +1845,9 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
 	} catch (groovyx.net.http.HttpResponseException e) {  
     	result = false  // this thread failed
     	if ((e.statusCode == 500) && (e.response.data.status.code == 14)) {
-           	if (debugLevel(3)) LOG("pollEcobeAPI() - HttpResponseException occurred: Auth_token has expired", 3, null, "info")
+           	if (debugLevelThree) LOG("pollEcobeAPI() - HttpResponseException occurred: Auth_token has expired", 3, null, "info")
            	atomicState.action = "pollChildren"
-            if (debugLevel(4)) LOG( "pollEcobeeAPI() - Refreshing your auth_token!", 4)
+            if (debugLevelFour) LOG( "pollEcobeeAPI() - Refreshing your auth_token!", 4)
             if ( refreshAuthToken() ) { 
             	// Note that refreshAuthToken will reschedule pollChildren if it succeeds in refreshing the token...
                 LOG( preText+'Auth_token refreshed', 2, null, 'info')
@@ -1744,9 +1880,229 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
             }
         }    	
     }
-    LOG("<===== Leaving pollEcobeeAPI() results: ${result}", 5)
+    if (debugLevelFour) LOG("<===== Leaving pollEcobeeAPI() results: ${result}", 4)
    
 	return result
+}
+
+def sendAlertEvents() {
+	if (atomicState.alerts == null) return				// silently return until we get the alerts environment initialized
+    boolean debugLevelFour = debugLevel(4)
+    if (!settings.askAlexa) {
+    	if (debugLevelFour) LOG("Ask Alexa support not configured, nothing to do, returning",4)
+    	return							// Nothing to do (at least for now)
+    }
+	if (debugLevelFour) LOG("Entered sendAlertEvents() ${atomicState.alerts}", 4)
+   
+    def askAlexaAlerts = atomicState.askAlexaAlerts			// list of alerts we have sent to Ask Alexa
+    if (!askAlexaAlerts) askAlexaAlerts = [:]		// make it a map if it doesn't exist yet
+	def alerts = atomicState.alerts							// the latest alerts from Ecobee (all thermostats, by tid)
+    def thermostatsWithNames = atomicState.thermostatsWithNames
+    def totalAlexaAlerts = 0		// including any duplicates we send
+    def totalNewAlerts = 0
+    def removedAlerts = 0
+    
+    // Initialize some Ask Alexa items
+    String queues = getMQListNames()
+    def exHours = settings.expire ? settings.expire as int : 0
+    def exSec=exHours * 3600
+    
+    // Walk through the list of thermostats
+    atomicState.thermostatData.thermostatList.each { stat ->
+    	String tid = stat.identifier
+        // Get the name for this thermostat
+        String DNI = [ app.id, tid ].join('.')
+       	String tstatName = (thermostatsWithNames?.containsKey(DNI)) ? thermostatsWithNames[DNI] : ''
+        if (tstatName == '') {
+            tstatName = getChildDevice(DNI)?.displayName		// better than displaying 'null' as the name
+        }
+        
+        if (alerts.containsKey(tid) && (alerts[tid] != [])) {	// we have alerts to process!
+			// Avoid saying "Your Downstairs Thermostat thermostat" or even "Your Downstairs Ecobee Thermostat"
+        	String append = ' thermostat'
+        	String tName = tstatName.toLowerCase().trim()
+        	if (tName.endsWith('thermostat') || tName.endsWith('ecobee')) append = ''
+        	tstatName = tstatName + append
+            // Process the alerts for this thermostat
+            def newAlerts = []
+           	def newAlexaAlerts = [:]
+            def allAlerts = []
+        	alerts[tid]?.each { alert ->
+				if (alert.acknowledgeRef.toString().contains(tid)) {		// only process alerts that match this thermostat ID
+					// reformat the alert type (header)
+       				String alertTypeMsg = alertTranslation( alert.alertType, alert.notificationType )
+
+                    // remove "Contact your service contractor..."
+                    def idx = alert.text.indexOf('Contact your s')
+                    
+					// Build the components of the translated message 
+                	String messageID = alert.acknowledgeRef.toString()				// Use acknowledgeRef as the messageID - it is supposed to be unique
+                    
+                    def expireTimeMS = (exSec==0) ? 0 : new Date().parse('yyyy-MM-dd HH:mm:ss',"${alert.date} ${alert.time}").getTime() + (exSec * 1000)
+                    def tstatTimeMS = new Date().parse('yyyy-MM-dd HH:mm:ss',stat.thermostatTime).getTime()
+                    if ((tstatTimeMS - expireTimeMS) < 0) {	
+                    	// hasn't expired yet, so send it/refresh it to Ask Alexa
+                		String dateTimeStr = fixDateTimeString( alert.date, alert.time, stat.thermostatTime) // gets us "today" or "yesterday"
+                		String translatedMessage = "Your ${tstatName} reported ${alertTypeMsg} ${dateTimeStr}: ${idx>0?alert.text.take(idx).trim():alert.text}"
+						// Now send the message to Ask Alexa
+                		LOG("Sending '${messageID}' to Ask Alexa ${queues?.size()>0?queues:'Primary Message'} queue${settings.listOfMQs?.size()>1?'s':''}: ${translatedMessage}",3,null,'info')
+    					sendLocationEvent(name: 'AskAlexaMsgQueue', value: 'Ecobee Status', unit: messageID, isStateChange: true, 
+    						descriptionText: translatedMessage, data: [ queues: settings.listOfMQs, overwrite: true, expires: exSec, suppressTimeDate: true ])
+                		totalAlexaAlerts++			// total that we sent to Ask Alexa for all thermostats
+                		allAlerts << messageID		// all the alerts that we found for THIS thermostat
+                    	// Create the list of new alerts we sent to Ask Alexa
+                		if (!askAlexaAlerts || !askAlexaAlerts.containsKey(tid) || !askAlexaAlerts[tid]?.contains(messageID)) {
+                    		if (!newAlerts || !newAlerts.contains(messageID)) {
+                    			newAlerts << messageID
+                    		}
+                		}
+                    } else {
+                    	// This messageID has expired, don't send it, delete it from Ask Alexa, remove it from outstanding Ask Alexa Alerts
+                        deleteAskAlexaAlert( 'Ecobee Status', messageID )
+                        if (askAlexaAlerts && askAlexaAlerts.containsKey(tid) && (askAlexaAlerts[tid] != [])) {
+                        	if (askAlexaAlerts[tid]?.contains(messageID)) {
+                            	askAlexaAlerts[tid].removeAll{ it == messageID }
+                                if (!askAlexaAlerts[tid]) askAlexaAlerts[tid] = []
+                                atomicState.askAlexaAlerts = askAlexaAlerts
+                            }
+                        }
+                    }
+                }
+            } // end of all the alerts for this thermostat
+            // Collect all the new alerts that we found for this thermostat
+            if (newAlerts != []) {
+            	totalNewAlerts += newAlerts.size()
+            	newAlexaAlerts[tid] = newAlerts
+            	askAlexaAlerts = askAlexaAlerts ? (askAlexaAlerts + newAlexaAlerts) : newAlexaAlerts
+			}
+
+			// Now, check if any of the saved alerts have been acknowledged (are no longer in thermostat.alerts)
+            if (askAlexaAlerts && askAlexaAlerts.containsKey(tid) && (askAlexaAlerts[tid] != [])) {
+            	def closedAlerts = askAlexaAlerts[tid]
+                if (allAlerts) {
+                	askAlexaAlerts[tid] = askAlexaAlerts[tid] + allAlerts
+                	closedAlerts = askAlexaAlerts[tid] - askAlexaAlerts[tid].intersect(allAlerts)
+                }
+            	// def closedAlerts = allAlerts ? (askAlexaAlerts[tid] + allAlerts) - askAlexaAlerts[tid].intersect(allAlerts) : askAlexaAlerts[tid]
+                log.debug "Closed Alerts: ${closedAlerts}"
+                if (closedAlerts) {
+            		closedAlerts.each { msgID ->
+                    	deleteAskAlexaAlert( 'Ecobee Status', msgID.toString() )
+                        askAlexaAlerts[tid].removeAll{ it == msgID }
+                    }
+                    // Remove the deleted alerts from the list of outstanding alerts
+                    // askAlexaAlerts[tid] = askAlexaAlerts[tid] - closedAlerts
+                    removedAlerts += closedAlerts.size()
+                }
+            }
+        } else {
+        	// There are no alerts for this tid... check if we need to delete any from Ask Alexa's queues
+            if (debugLevelFour) LOG('No active Ecobee alerts',4,null,'trace')
+        	if (askAlexaAlerts && askAlexaAlerts.containsKey(tid) && (askAlexaAlerts[tid] != [])) {
+            	// we have some previously queued messages to delete
+            	LOG("Ecobee Alerts cleared for ${tstatName}, deleting outstanding notices from Ask Alexa",2,null,'info')
+        		askAlexaAlerts[tid].each { msgID ->
+                	deleteAskAlexaAlert ('Ecobee Status', msgID.toString())
+                }
+                removedAlerts += askAlexaAlerts[tid].size()
+                askAlexaAlerts[tid] = []	// clear out the list
+            }
+        }
+    } // end of { stat ->
+    if (totalAlexaAlerts > 0) {
+    	def updated = totalAlexaAlerts - totalNewAlerts
+    	LOG("Sent ${totalNewAlerts} new ${updated?'and '+updated.toString()+' updated ':''}Alert${(totalNewAlerts+updated)>1?'s':''} to Ask Alexa",2,null,'info')
+    }
+    if (removedAlerts > 0) {
+    	LOG("Removed ${removedAlerts} Alert${removedAlerts>1?'s':''} from Ask Alexa",2,null,'info')
+    }
+//    if ((askAlexaAlerts != [:]) || (newAlexaAlerts != [:])) askAlexaAlerts = askAlexaAlerts + newAlexaAlerts
+    atomicState.askAlexaAlerts = askAlexaAlerts
+}
+
+def deleteAskAlexaAlert( String type, String msgID ) {
+	LOG("Deleting ${type} Ask Alexa message ID ${msgID}",2,null,'info')
+    sendLocationEvent( name: 'AskAlexaMsgQueueDelete', value: type, unit: msgID, isStateChange: true, data: [ queues: settings.listOfMQs ])
+}
+
+private String alertTranslation( alertType, notificationType ){
+	switch (alertType) {
+    	case 'alert':
+        	switch(notificationType) {
+            	case 'hvac':
+                	return 'an H V A C Maintenance Reminder'
+                    break;
+                case 'furnaceFilter':
+                	return 'a Furnace Air Filter Reminder'
+                    break;
+                case 'humidifierFilter':
+                	return 'a Humidifier Filter Reminder'
+                    break;
+                case 'dehumidifierFilter':
+                	return 'a Dehumidifier Filter Reminder'
+                    break;
+                case 'ventilator':
+                    return 'a Ventilator Reminder'
+                    break;
+                case 'ac':
+                    return 'an Air Conditioner Alert'
+                    break;
+                case 'airFilter':
+                    return 'an Air Filter Reminder'
+                    break;
+                case 'airCleaner':
+                    return 'an Air Cleaner Reminder'
+                    break;
+                case 'uvLamp':
+                    return 'an Ultraviolet Lamp Reminder'
+                    break;
+                case 'temp':
+                    return 'a Temperature Alert'
+                    break;
+                case 'lowTemp':
+                    return 'a Low Temperature Alert'
+                    break;
+                case 'highTemp':
+                    return 'a High temperature Alert'
+                    break;
+                case 'lowHumidity':
+                    return 'a Low Humidity Alert'
+                    break;
+                case 'highHumidity':
+                    return 'a High Humidity Alert'
+                    break;
+                case 'auxHeat':
+                    return 'an Auxiliary Heat Run Time Alert'
+                    break;
+                case 'auxOutdoor':
+                    return 'an Auxiliary Outdoor Temperature Alert'
+                    break;
+                case 'sensor':
+                    return 'a Sensor Alert'
+                    break;
+                case 'alert':
+                default:
+                    return 'an Alert'
+                    break;
+            }
+            break;
+        case 'demandResponse':
+        	return 'a demand response message'
+       		break;
+        case 'emergency':
+        	return 'an emergency notice'
+        	break;
+        case 'message':
+        	return 'a message for you'
+        	break;
+        case 'pricing':
+        	return 'a pricing notice'
+       		break;
+        default:
+        	return 'an alert'
+            break;
+    }
+    return 'An Alert'
 }
 
 def updateSensorData() {
@@ -1921,20 +2277,23 @@ def updateThermostatData() {
     String preText = getDebugLevel() <= 2 ? '' : 'updateThermostatData() - '
     def tstatNames = []
     def thermostatsWithNames = atomicState.thermostatsWithNames
-    
-    def needExtendedRuntime = false
+    def askAlexaAppAlerts = atomicState.askAlexaAppAlerts
+    if (askAlexaAppAlerts == null) askAlexaAppAlerts = [:]
+    // def needExtendedRuntime = false
+    boolean debugLevelFour = debugLevel(4)
+    boolean debugLevelThree = debugLevel(3)
 
 	atomicState.thermostats = atomicState.thermostatData.thermostatList.inject([:]) { collector, stat ->
 		// we use atomicState.thermostatData because it holds the latest Ecobee API response, from which we can determine which stats actually
         // had updated data. Thus the following work is done ONLY for tstats that have updated data
 		def tid = stat.identifier
-        
+        // if (atomicState.askAlexaAppAlerts?.containsKey(tid) && (atomicState.askAlexaAppAlerts[tid] == true)) atomicState.askAlexaAppAlerts[tid] = []
         def DNI = [ app.id, stat.identifier ].join('.')
         def tstatName = (thermostatsWithNames?.containsKey(DNI)) ? thermostatsWithNames[DNI] : null
         if (tstatName == null) {
             tstatName = getChildDevice(DNI)?.displayName		// better than displaying 'null' as the name
         }
-		if (debugLevel(3)) LOG("updateThermostatData() - Updating event data for thermostat ${tstatName} (${tid})", 3, null, 'info')
+		if (debugLevelThree) LOG("updateThermostatData() - Updating event data for thermostat ${tstatName} (${tid})", 3, null, 'info')
 
 	// grab a local copy from the atomic storage all at once (avoid repetive reads from backing store)
     	def es = atomicState.equipmentStatus
@@ -1947,9 +2306,9 @@ def updateThermostatData() {
         def events = atomicState.events ? atomicState.events[tid] : [:]
         def runtime = atomicState.runtime ? atomicState.runtime[tid] : [:]
         def statLocation = atomicState.statLocation ? atomicState.statLocation[tid] : [:]
-        def oemCfg = atomicState.oemCfg ? atomicState.oemCfg[tid] : [:]
+        // def oemCfg = atomicState.oemCfg ? atomicState.oemCfg[tid] : [:]
         def extendedRuntime = atomicState.extendedRuntime ? atomicState.extendedRuntime[tid] : [:]
-		// not worth it - weather is only accessed twice, and it is a LOT of data - we will access it directly from the atomicState cache
+		// not worth it - weather is only accessed twice, and it now 'shortWeather', so we will access it directly from the atomicState cache
         // def weather = atomicState.weather ? atomicState.weather[tid] : [:]    
         
     // Handle things that only change when runtime object is updated)
@@ -1967,15 +2326,15 @@ def updateThermostatData() {
             
         	def hasInternalSensors
         	if(!thermSensor) {
-				if (debugLevel(4)) LOG('updateThermostatData() - This thermostat does not have a built in remote sensor', 4, null, 'info')
+				if (debugLevelFour) LOG('updateThermostatData() - This thermostat does not have a built in remote sensor', 4, null, 'info')
 				hasInternalSensors = false
         	} else {
         		hasInternalSensors = true
-				if (debugLevel(4)) LOG("updateThermostatData() - thermSensor == ${thermSensor}", 4 )
+				if (debugLevelFour) LOG("updateThermostatData() - thermSensor == ${thermSensor}", 4 )
         
 				def occupancyCap = thermSensor?.capability.find { it.type == 'occupancy' }
                 if (occupancyCap) {
-					if (debugLevel(4)) LOG("updateThermostatData() - occupancyCap = ${occupancyCap} value = ${occupancyCap.value}", 4, null, 'info')
+					if (debugLevelFour) LOG("updateThermostatData() - occupancyCap = ${occupancyCap} value = ${occupancyCap.value}", 4, null, 'info')
         
 					// Check to see if there is even a value, not all types have a sensor
                     occupancy = occupancyCap.value ? occupancyCap.value : 'not supported'
@@ -1998,9 +2357,9 @@ def updateThermostatData() {
             }
         	tempHeatingSetpoint = myConvertTemperatureIfNeeded( (tempHeatAt / 10.0), 'F', apiPrecision)
         	tempCoolingSetpoint = myConvertTemperatureIfNeeded( (tempCoolAt / 10.0), 'F', apiPrecision)
-        	if (atomicState.weather && (atomicState.weather.size() > 0)) {
-            	tempWeatherTemperature = myConvertTemperatureIfNeeded( ((atomicState.weather[tid].forecasts[0].temperature.toDouble() / 10.0)), "F", apiPrecision)
-        	}
+        	if (atomicState.weather && atomicState.weather?.containsKey(tid) && atomicState.weather[tid].containsKey('temperature')) {
+            	tempWeatherTemperature = myConvertTemperatureIfNeeded( ((atomicState.weather[tid].temperature.toDouble() / 10.0)), "F", apiPrecision)
+        	} else {tempWeatherTemperature = 451.0} // will happen only once, when weather object changes to shortWeather
         }
         
 	// handle[tid] things that only change when the thermostat object is updated
@@ -2065,7 +2424,7 @@ def updateThermostatData() {
             scheduledClimateName = schedClimateRef.name
             program.climates?.each { climatesList += '"'+it.name+'"' } // read with: programsList = new JsonSlurper().parseText(theThermostat.currentValue('programsList'))
         }
-		if (debugLevel(4)) LOG( "scheduledClimateId: ${scheduledClimateId}, scheduledClimateName: ${scheduledClimateName}, climatesList: ${climatesList.toString()}", 4, null, 'info')
+		if (debugLevelFour) LOG("scheduledClimateId: ${scheduledClimateId}, scheduledClimateName: ${scheduledClimateName}, climatesList: ${climatesList.toString()}", 4, null, 'info')
         
 		// check which program is actually running now
         def vacationTemplate = false
@@ -2083,7 +2442,7 @@ def updateThermostatData() {
         if (!vacationTemplate) {
         	LOG("No vacation template exists for ${tid}, creating one...", 2, null, 'warn')
         	def r = createVacationTemplate(getChildDevice(DNI), tid.toString())		
-            if (debugLevel(3)) LOG("createVacationTemplate() returned ${r}", 3, null, 'trace')
+            if (debugLevelThree) LOG("createVacationTemplate() returned ${r}", 3, null, 'trace')
         }
         
         // store the currently running event (in case we need to modify or delete it later, as in Vacation handling)
@@ -2096,25 +2455,77 @@ def updateThermostatData() {
         String holdEndsAt = ''
         
         def isConnected = runtime?.connected
-        if (!isConnected) LOG("isConnected: ${isConnected}",2,null,'warn')
         if (!isConnected) {
-        	// Ecobee Cloud lost connection with the thermostat - power or network outage
+        	LOG("${tstatName} is not connected!",1,null,'warn')
+        	// Ecobee Cloud lost connection with the thermostat - device, wifi, power or network outage
             currentClimateName = 'Offline'
             currentClimate = currentClimateName
             currentClimateId = 'offline'
             occupancy = 'unknown'
             
             // Oddly, the runtime.lastModified is returned in UTC, so we have to convert it to the time zone of the thermostat
-            def myTimeZone = statLocation?.timeZone ? TimeZone.getTimeZone(statLocation.timeZone) : (location.timeZone ? location.timeZone : TimeZone.getTimeZone('UTC'))
-            String localLastModified = new Date().parse('yyyy-MM-dd HH:mm:ss',runtime.lastModified).format('yyyy-MM-dd HH:mm:ss', myTimeZone)
-            // In this case, holdEndsAt is actually the time of the last valid runtime update we have received...
-            holdEndsAt = fixDateTimeString( localLastModified.take(10), localLastModified.drop(11), stat.thermostatTime )
+            // (Note that each thermostat could actually be in a different time zone)
+            def myTimeZone = statLocation?.timeZone ? TimeZone.getTimeZone(statLocation.timeZone) : (location.timeZone?: TimeZone.getTimeZone('UTC'))
+            def disconnectedMS = new Date().parse('yyyy-MM-dd HH:mm:ss',runtime?.disconnectDateTime).getTime()
+            String disconnectedAt = new Date().parse('yyyy-MM-dd HH:mm:ss',runtime?.disconnectDateTime).format('yyyy-MM-dd HH:mm:ss', myTimeZone)
+            // In this case, holdEndsAt is actually the date & time of the last valid update from the thermostat...
+            holdEndsAt = fixDateTimeString( disconnectedAt.take(10), disconnectedAt.drop(11), stat.thermostatTime )
+            if (forcePoll && settings.askAlexa) {
+            	// Let's send an Ask Alexa Alert for this as well - (Only on hourly/forcepolls, though, to minimize update overhead)
+                String messageID = tid.toString()+'*disconnected'
+                def exHours = settings.expire ? settings.expire as int : 0
+    			def exSec=exHours * 3600
+                // If expiration is set, then stop sending alerts to Ask Alexa after disconnectTime + exHours
+                def expireTimeMS = (exSec==0) ? 0 : disconnectedMS + (exSec * 1000)
+                def currentTimeMS = now()
+               	if ((currentTimeMS - expireTimeMS) < 0) {	
+					// Not time to expire the message, so send it	
+                	// Avoid saying "Your Downstairs Thermostat thermostat" or even "Your Downstairs Ecobee Thermostat"
+        			String append = ' thermostat'
+        			String tName = tstatName.toLowerCase().trim()
+        			if (tName.endsWith('thermostat') || tName.endsWith('ecobee')) append = ''
+        			tName = tstatName + append
+                	
+                	String translatedMessage = "Your ${tName} reported a Connectivity Alert: Ecobee Cloud connection lost ${holdEndsAt}. Please check HVAC power, wifi, and network connection."
+                	if (debugLevelFour) LOG("Sending ${translatedMessage} to Ask Alexa",4,null,'trace')
+                	sendLocationEvent(name: "AskAlexaMsgQueue", value: "Ecobee Status", unit: messageID, isStateChange: true, 
+    					descriptionText: translatedMessage, data: [ queues: settings.listOfMQs, overwrite: true, expires: exSec, suppressTimeDate: true ])
+            		def newAlexaAppAlerts = [:]
+            		newAlexaAppAlerts[tid] = [messageID]
+            		if (askAlexaAppAlerts != [:]) newAlexaAppAlerts = askAlexaAppAlerts + newAlexaAppAlerts
+            		atomicState.askAlexaAppAlerts = newAlexaAppAlerts
+                	askAlexaAppAlerts = newAlexaAppAlerts
+                } else {
+                	// It is past the expiry time, delete the message from the Ask Alexa queue(s)
+                    if (askAlexaAppAlerts && askAlexaAppAlerts[tid] && (askAlexaAppAlerts[tid] != [])) { 
+                		log.debug "Expiry: ${askAlexaAppAlerts}, ${messageID}"
+        				if (askAlexaAppAlerts[tid]?.toString().contains(messageID)) {
+							deleteAskAlexaAlert('Ecobee Status', messageID)
+        					askAlexaAppAlerts[tid].removeAll{ it == messageID }
+                    		if (!askAlexaAppAlerts[tid]) askAlexaAppAlerts[tid] = []
+               				atomicState.askAlexaAppAlerts = askAlexaAppAlerts
+                        }
+                    }
+                }
+            }
+        } else if (settings.askAlexa) {
+        	// We are connected, and Ask Alexa is enabled - check if we need to delete a prior Ask Alexa Alert
+        	if (askAlexaAppAlerts && askAlexaAppAlerts[tid] && (askAlexaAppAlerts[tid] != [])) { 
+        		String msgID = tid.toString()+'*disconnected'
+                log.debug "Connected! ${askAlexaAppAlerts}, ${msgID}"
+        		if (askAlexaAppAlerts[tid]?.toString().contains(msgID)) {
+					deleteAskAlexaAlert('Ecobee Status', msgID)
+        			askAlexaAppAlerts[tid].removeAll{ it == msgID }
+                    if (!askAlexaAppAlerts[tid]) askAlexaAppAlerts[tid] = []
+               		atomicState.askAlexaAppAlerts = askAlexaAppAlerts
+                }
+            }
         }
         
         if (runningEvent && isConnected) {
+        	if (debugLevelFour) LOG("Found a running Event: ${runningEvent}", 4) 
             holdEndsAt = fixDateTimeString( runningEvent.endDate, runningEvent.endTime, stat.thermostatTime)
 			thermostatHold = runningEvent.type
-            if (debugLevel(4)) LOG("Found a running Event: ${runningEvent}", 4) 
             String tempClimateRef = runningEvent.holdClimateRef ? runningEvent.holdClimateRef : ''
             switch (runningEvent.type) {
             	case 'hold':
@@ -2164,7 +2575,7 @@ def updateThermostatData() {
                 currentClimate = ''
         	}
 		}
-        if (debugLevel(4)) LOG("updateThermostatData() - currentClimateName set = ${currentClimateName}  currentClimateId set = ${currentClimateId}", 4, null, 'info')
+        if (debugLevelFour) LOG("updateThermostatData() - currentClimateName set = ${currentClimateName}  currentClimateId set = ${currentClimateId}", 4, null, 'info')
 		
         if (runningEvent) {
         	currentFanMode = atomicState.circulateFanModeOn ? "circulate" : atomicState.offFanModeOn ? "off" : runningEvent.fan
@@ -2263,7 +2674,7 @@ def updateThermostatData() {
 		// poll status instead of the date/time (this simplifies the UI presentation, and reduces the chatter in the devices'
 		// message log
         def apiConnection = apiConnected()
-        def lastPoll = (debugLevel(4)) ? atomicState.lastPollDate : (apiConnection=='full') ? 'Succeeded' : (apiConnection=='warn') ? 'Incomplete' : 'Failed'
+        def lastPoll = (debugLevelFour) ? atomicState.lastPollDate : (apiConnection=='full') ? 'Succeeded' : (apiConnection=='warn') ? 'Incomplete' : 'Failed'
         
         def statusMsg
         if (isConnected) {
@@ -2287,19 +2698,19 @@ def updateThermostatData() {
         // Runtime stuff that changes most frequently - we test them 1 at a time, and send only the ones that change
         // Send these first, as they generally are the reason anything else changes (so the thermostat's notification log makes sense)
 		if (forcePoll || runtimeUpdated) {
-        	String wSymbol = atomicState.weather[tid]?.forecasts[0]?.weatherSymbol?.toString()
+        	String wSymbol = atomicState.weather[tid]?.weatherSymbol?.toString()
             def oftenList = [tempTemperature,occupancy,runtime.actualHumidity,tempHeatingSetpoint,tempCoolingSetpoint,wSymbol,tempWeatherTemperature,humiditySetpoint,userPrecision]
             def lastOList = []
             lastOList = changeOften[tid]
-            if (forcePoll || !lastOList || (lastOList.size() < 8)) lastOList = [999,"x",-1,-1,-1,-999,-999,-1] 
+            if (forcePoll || !lastOList || (lastOList.size() < 9)) lastOList = [999,"x",-1,-1,-1,-999,-999,-1,-1] 
             if (lastOList[0] != tempTemperature) data += [temperature: String.format("%.${apiPrecision}f", tempTemperature.toDouble().round(apiPrecision)),]
             if (lastOList[1] != occupancy) data += [motion: occupancy,]
             if (lastOList[2] != runtime.actualHumidity) data += [humidity: runtime.actualHumidity,]
             // send these next two also when the userPrecision changes
-            if ((lastOList[3] != tempHeatingSetpoint) || (lastOList[6] != userPrecision)) data += [heatingSetpoint: String.format("%.${userPrecision}f", tempHeatingSetpoint?.toDouble().round(userPrecision)),]
-            if ((lastOList[4] != tempCoolingSetpoint) || (lastOList[6] != userPrecision)) data += [coolingSetpoint: String.format("%.${userPrecision}f", tempCoolingSetpoint?.toDouble().round(userPrecision)),]
-            if ((lastOList[5] != wSymbol) && isConnected) data += [weatherSymbol: wSymbol]	// only update weather if we are still connected - else we need to be silent
-            if ((lastOList[6] != tempWeatherTemperature) && isConnected) data += [weatherTemperature: String.format("%.${userPrecision}f", tempWeatherTemperature?.toDouble().round(userPrecision)),]
+            if ((lastOList[3] != tempHeatingSetpoint) || (lastOList[8] != userPrecision)) data += [heatingSetpoint: String.format("%.${userPrecision}f", tempHeatingSetpoint?.toDouble().round(userPrecision)),]
+            if ((lastOList[4] != tempCoolingSetpoint) || (lastOList[8] != userPrecision)) data += [coolingSetpoint: String.format("%.${userPrecision}f", tempCoolingSetpoint?.toDouble().round(userPrecision)),]
+            if (lastOList[5] != wSymbol) data += [weatherSymbol: wSymbol]
+            if ((lastOList[6] != tempWeatherTemperature)|| (lastOList[8] != userPrecision)) data += [weatherTemperature: String.format("%.${userPrecision}f", tempWeatherTemperature?.toDouble().round(userPrecision)),]
             if (lastOList[7] != humiditySetpoint) data += [humiditySetpoint: humiditySetpoint,]
            	changeOften[tid] = oftenList
             atomicState.changeOften = changeOften
@@ -2309,7 +2720,7 @@ def updateThermostatData() {
         Integer pollingInterval = getPollingInterval() // if this changes, we recalculate checkInterval for Health Check
         def cloudList = [lastPoll,apiConnection,pollingInterval,isConnected]
         if (forcePoll || (changeCloud == [:]) || !changeCloud.containsKey(tid) || (changeCloud[tid] != cloudList)) { 
-        	def checkInterval = (pollingInterval <= 5) ? (12*60) : (((pollingInterval+1)*2)*60) 
+        	def checkInterval = (pollingInterval <= 5) ? (16*60) : (((pollingInterval+1)*2)*60) 
             if (checkInterval > 3600) checkInterval = 3900 	// 5 minutes longer than an hour
             data += [
         		lastPoll: lastPoll,
@@ -2339,7 +2750,7 @@ def updateThermostatData() {
         }
         
         // Equipment operating status - I *think* this can change with either thermostat or runtime changes
-        if (forcePoll || (lastEquipStatus != equipStatus)) { 
+        if (isConnected && (forcePoll || (lastEquipStatus != equipStatus))) { 
             data += [
         		equipmentStatus: 		  equipStatus,
             	thermostatOperatingState: thermOpStat,
@@ -2350,7 +2761,7 @@ def updateThermostatData() {
         }
         
 		// Thermostat configuration settinngs
-        if (forcePoll || thermostatUpdated) {	// new settings, programs or events
+        if (isConnected && (forcePoll || thermostatUpdated)) {	// new settings, programs or events
         	def autoMode = statSettings?.autoHeatCoolFeatureEnabled
         	
             // Thermostat configuration stuff that almost never changes - if any one changes, send them all
@@ -2417,7 +2828,7 @@ def updateThermostatData() {
     	}
         
 
-        if (debugLevel(4)) LOG("updateThermostatData() - Event data updated for thermostat ${tstatName} (${tid}) = ${data}", 4, null, 'trace')
+        if (debugLevelFour) LOG("updateThermostatData() - Event data updated for thermostat ${tstatName} (${tid}) = ${data}", 4, null, 'trace')
 
 		// it is possible that thermostatSummary indicated things have changed that we don't care about...
 		if (data != [:]) {
@@ -2437,14 +2848,15 @@ def updateThermostatData() {
 }
 
 def getChildThermostatDeviceIdsString(singleStat = null) {
+	def debugLevelFour = debugLevel(4)
 	if(!singleStat) {
-    	if (debugLevel(4)) LOG('getChildThermostatDeviceIdsString() - !singleStat returning the list for all thermostats', 4, null, 'info')
+    	if (debugLevelFour) LOG('getChildThermostatDeviceIdsString() - !singleStat returning the list for all thermostats', 4, null, 'info')
 		return thermostats.collect { it.split(/\./).last() }.join(',')
 	} else {
     	// Only return the single thermostat
-        if (debugLevel(4)) LOG('Only have a single stat.', 4, null, 'debug')
+        if (debugLevelFour) LOG('Only have a single stat.', 4, null, 'debug')
         def ecobeeDevId = singleStat.device.deviceNetworkId.split(/\./).last()
-        if (debugLevel(4)) LOG("Received a single thermostat, returning the Ecobee Device ID as a String: ${ecobeeDevId}", 4, null, 'info')
+        if (debugLevelFour) LOG("Received a single thermostat, returning the Ecobee Device ID as a String: ${ecobeeDevId}", 4, null, 'info')
         return ecobeeDevId as String  	
     }
 }
@@ -3400,45 +3812,30 @@ private def debugLevel(level=3) {
 }
 
 private String fixDateTimeString( String dateStr, String timeStr, String thermostatTime) {
-	String todayDate = thermostatTime.take(10)
 	// date is in ecobee format: YYYY-MM-DD or null (meaning "today")
 	// time is in ecobee format: HH:MM:SS
+    def today = new Date().parse('yyyy-MM-dd', thermostatTime)
+    def target = new Date().parse('yyyy-MM-dd', dateStr)
+    
     String resultStr = ''
     String myDate = ''
     String myTime = ''
-    String tTime = timeStr
+    boolean showTime = true
     
-    if (dateStr == '2035-01-01' ) { 		// to Infinity
-        myDate = 'a long time from now'
-        tTime = ''
-    } else if (dateStr == todayDate) {
+    if (target == today) {
     	myDate = 'today'    
+    } else if (target == today-1) {
+    	myDate = 'yesterday'
+    } else if (target == today+1) {
+    	myDate = 'tomorrow'
+    } else if (dateStr == '2035-01-01' ) { 		// to Infinity
+        myDate = 'a long time from now'
+        showTime = false
     } else {
-		myDate = dateStr.drop(5)	// get MM-DD
-        String delim = myDate.substring(2,3)
-        int month = myDate.take(2).toInteger()
-        int days = myDate.drop(3).toInteger()
-        int todayMonth = todayDate.drop(5).take(2).toInteger()
-        if (month == todayMonth) {
-        	int todayDays = todayDate.drop(8).toInteger()
-            if (todayDays+1 == days) myDate = 'tomorrow'
-            if (todayDays-1 == days) myDate = 'yesterday'
-        } else {
-        	myDate = "on ${month}${delim}${days}"
-        }
-	}
-    
-    if (tTime != '') {
-		myTime = timeStr.take(5)		// get HH:MM
-		int hours = myTime.take(2).toInteger()
-        int mins = myTime.drop(3).toInteger()
-		if (hours < 12) {
-        	if (hours==0) hours = 12
-			myTime = "${hours}" + myTime.drop(2) + 'am'
-		} else {
-        	if (hours==12) hours = 24		// hack
-			myTime = "${hours-12}" + myTime.drop(2) + "pm"
-		}
+    	myDate = 'on '+target.format('MM-dd')
+    }    
+    if (showTime) {
+    	myTime = new Date().parse('HH:mm:ss',timeStr).format('h:mma').toLowerCase()
 	}
     if (myDate || myTime) {
     	resultStr = myTime ? "${myDate} at ${myTime}" : "${myDate}"
