@@ -18,13 +18,14 @@
  *	1.0.2	-	Fixed 'clear()' and a typo or two
  *  1.0.3	-	Optimized prior fix
  *	1.0.4	- 	Added support for switches, configurable open/closed/on/off
+ *	1.0.5	-	Updated settings & disabled handling
  *
  */
  
  /**
   * TODO: Add support for more than on/off such as programs
   */
-def getVersionNum() { return "1.0.4" }
+def getVersionNum() { return "1.0.5" }
 private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
 
 
@@ -53,22 +54,22 @@ def mainPage() {
         }
         
         section(title: "Select Thermostats") {
-        	if(settings.tempDisable == true) paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler."
-        	input ("myThermostats", "capability.Thermostat", title: "Pick Ecobee Thermostat(s)", required: true, multiple: true, submitOnChange: true)            
+        	if(settings.tempDisable) { paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler." }
+        	else { input ("myThermostats", "capability.Thermostat", title: "Pick Ecobee Thermostat(s)", required: true, multiple: true, submitOnChange: true) }          
 		}
 	
-		if (myThermostats?.size() > 0) {
+		if (!settings.tempDisable && (settings.myThermostats?.size() > 0)) {
 
 			section(title: "Select Contact Sensors") {
 				input(name: "contactSensors", title: "Contact Sensors: ", type: "capability.contactSensor", required: false, multiple: true, description: "")
-                if (contactSensors) {
+                if (settings.contactSensors) {
                 	input(name: 'contactOpen', type: 'bool', title: 'Stop HVAC when contact(s) are open?', required: true, defaultValue: true)
                 }
 			}
             
             section(title: "Select Switches") {
             	input(name: "theSwitches", title: "Switches: ", type: "capability.switch", required: false, multiple: true, description: "")
-                if (theSwitches) {
+                if (settings.theSwitches) {
                 	input(name: 'switchOn', type: 'bool', title: 'Stop HVAC when switch(es) are turned on?', required: true, defaultValue: true)
                 }
         	}
