@@ -15,8 +15,9 @@
  *
  *	1.0.1 - Initial Release
  *	1.0.2 - Added option to limit operation to certain SmartThings Modes
+ *	1.0.3 - Updated settings and TempDisable handling
  */
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.0.3" }
 private def getVersionLabel() { return "ecobee Smart Switches Version ${getVersionNum()}" }
 
 definition(
@@ -43,14 +44,14 @@ def mainPage() {
         }
         
         section(title: "Smart Switches: Thermostat(s)") {
-            if (settings.tempDisable == true) {
+            if (settings.tempDisable) {
             	paragraph "WARNING: Temporarily Disabled as requested. Turn back on below to enable handler."
             } else {
 				input(name: "theThermostats", type: "capability.thermostat", title: "Monitor these thermostat(s) for operating state changes", multiple: true, required: true, submitOnChange: true)
             }
 		}
         
-        if (theThermostats?.size() > 0) {
+        if (!settings.tempDisable && (theThermostats?.size() > 0)) {
         	section(title: "Smart Switches: Operating State") {
         		input(name: "theOpState", type: "enum", title: "When ${theThermostats?theThermostats:'thermostat'} changes to one of these Operating States", 
                 	metadata:[values:['heating','cooling','fan only','idle','pending cool','pending heat','vent economizer']],
@@ -74,11 +75,10 @@ def mainPage() {
 						defaultValue: false, submitOnChange: true)
             	}
         	}
-        	
-			section(title: "Smart Switches: Operation") {
-        		mode(title: "Enable only for specific mode(s)")
-        		input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
-        	}
+        }
+		section(title: "Smart Switches: Operation") {
+        	mode(title: "Enable only for specific mode(s)")
+        	input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", required: false, description: "", submitOnChange: true)                
         }
         section (getVersionLabel())
     }
