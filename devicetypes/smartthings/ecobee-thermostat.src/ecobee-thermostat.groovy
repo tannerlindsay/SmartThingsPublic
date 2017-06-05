@@ -37,10 +37,11 @@
  *	1.0.8  - Improved Health Check reliability
  *	1.0.9  - Added support for new heating/coolingSetpointMin/Max
  *	1.0.10 - Restored Fahrenheit 451 (offline handling), fixed cancel vacation button
+ *	1.0.11 - Tweaks to logs and thermostatDate display
  *
  */
 
-def getVersionNum() { return "1.0.10" }
+def getVersionNum() { return "1.0.11" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -609,8 +610,13 @@ def refresh() {
 	poll()
 }
 
+def installed() {
+	updated()
+}
+
 def updated() {
 	LOG("${getVersionLabel()} updated",1,null,'trace')
+    sendEvent(name: 'checkInterval', value: 3900, displayed: false, isStateChange: true)  // 65 minutes (we get forcePolled every 60 minutes
 }
 
 void poll() {
@@ -625,7 +631,8 @@ def ping() {
 }
 
 def generateEvent(Map results) {
-	def debugLevelFour = debugLevel(4)
+	def startMS = now()
+	boolean debugLevelFour = debugLevel(4)
 	if (debugLevelFour) LOG("generateEvent(): parsing data ${results}", 4)
     //LOG("Debug level of parent: ${parent.settings.debugLevel}", 4, null, "debug")
 	def linkText = getLinkText(device)
@@ -633,7 +640,7 @@ def generateEvent(Map results) {
 
 	def updateTempRanges = false
     def precision = device.currentValue('decimalPrecision')
-    if (!precision) precision = (tempScale == 'C') ? 1 : 0
+    if (!precision == null) precision = isMetric ? 1 : 0
     Integer objectsUpdated = 0
 	
 	if(results) {
@@ -651,39 +658,16 @@ def generateEvent(Map results) {
 			
 			switch (name) {
 				case 'heatingSetpoint':
-                /*	if (tMode== 'heat') {
+                	if (device.currentValue('thermostatOperatingState').contains('heat')) {
                     	sendEvent(name: 'thermostatSetpoint', value: sendValue, displayed: false)	// send this event for API compatibility only
                         objectsUpdated++
-                    } else if (tMode == 'auto') {
-                    	def heat = device.currentValue('temperature').toDouble() - value.toDouble()
-                        def cool = device.currentValue('coolingSetpoint').toDouble() - device.currentValue('temperature').toDouble()
-                        // log.debug "${heat} / ${cool}"
-                        if ( heat <= cool ) {
-                        	sendEvent(name: 'thermostatSetpoint', value: sendValue, displayed: false)
-                            objectsUpdated++
-                        }
-                    }
-                    event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
-                    break;
-                */    
+                    }    
 				case 'coolingSetpoint':
-                /*    if (tMode == 'cool') {
+                	if (device.currentValue('thermostatOperatingState').contains('cool')) {
                     	sendEvent(name: 'thermostatSetpoint', value: sendValue, displayed: false)	// send this event for API compatibility only
                         objectsUpdated++
-                    } else if (tMode == 'auto') {
-                    	def heat = device.currentValue('temperature').toDouble() - device.currentValue('heatingSetpoint').toDouble()
-                        def cool = value.toDouble() - device.currentValue('temperature').toDouble()
-                        // log.debug "${heat} / ${cool}"
-                        if ( heat >= cool ) {
-                        	sendEvent(name: 'thermostatSetpoint', value: sendValue, displayed: false)
-                            objectsUpdated++
-                        }
-                    }
-                    event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
-                    break;
-                */    
+                    }   
 				case 'weatherTemperature':
-//                case 'thermostatSetpoint':
                 case 'temperature':
                     if (isChange) {
 						if (name=="temperature") {
@@ -736,7 +720,20 @@ def generateEvent(Map results) {
                     isChange = isStateChange(device, name, realValue)
 					if (isChange) event = eventFront + [value: realValue, descriptionText: "Thermostat is ${realValue}", isStateChange: true, displayed: false]
                     
-                    
+                    // update the thermostat setpoint (most necessary for auto mode, when we could be pinging back and forth)
+                    if (realValue.contains('heat')) {
+                    	def tstatSetpoint = device.currentValue('heatingSetpoint')
+                    	if (isStateChange(device, 'thermostatSetpoint', tstatSetpoint.toString())) {
+                    		sendEvent(name: 'thermostatSetpoint', value: tstatSetpoint, isStateChange: true, displayed: false)
+                        	objectsUpdated++
+                        }
+                    } else if (realValue.contains('cool')) {
+                    	def tstatSetpoint = device.currentValue('coolingSetpoint')
+                        if (isStateChange(device, 'thermostatSetpoint', tstatSetpoint.toString())) {
+                    		sendEvent(name: 'thermostatSetpoint', value: tstatSetpoint, isStateChange: true, displayed: false)
+                        	objectsUpdated++
+                        }
+                    }
                 	break;
 				
 				case 'equipmentOperatingState':
@@ -844,17 +841,8 @@ def generateEvent(Map results) {
                     
                 case 'thermostatTime':
                 // 2017-03-22 15:06:14
-                	String tstatDate = sendValue.take(4) + '\n' + sendValue.drop(5).take(5)
-                    String tstatTime = sendValue.drop(11).take(5)
-                    int hours = tstatTime.take(2).toInteger()
-                    int mins = tstatTime.drop(3).toInteger()
-                    if (hours < 12) {
-                    	if (hours==0) hours = 12
-                    	tstatTime = "${hours}" + tstatTime.drop(2) + 'am'
-                    } else {
-                    	if (hours==12) hours = 24
-                        tstatTime = "${hours-12}" + tstatTime.drop(2) + "pm"
-                    }
+                    String tstatDate = new Date().parse('yyyy-MM-dd',sendValue).format('M-d\nyyyy')
+                    String tstatTime = new Date().parse('HH:mm',sendValue.drop(11)).format('h:mma').toLowerCase()
                     if (isStateChange(device, 'tstatDate', tstatDate)) sendEvent(name: 'tstatDate', value: tstatDate, isStateChange: true, displayed: false)
                     if (isStateChange(device, 'tstatTime', tstatTime)) sendEvent(name: 'tstatTime', value: tstatTime, isStateChange: true, displayed: false)
                     if (isChange) event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
@@ -864,52 +852,52 @@ def generateEvent(Map results) {
                 // Update the new (Optional) SetpointMin/Max attributes
                 case 'heatRangeLow':
                 	if (isChange || (device.currentValue('heatingSetpointMin') != sendValue)) {
-                    	sendEvent(name: 'heatingSetpointMin', value: sendValue, isStateChange: true, displayed: false)
+                    	sendEvent(name: 'heatingSetpointMin', value: sendValue, /*isStateChange: true, */ displayed: false)
                         objectsUpdated++
                         def theMode = device.currentValue('thermostatMode')
                         if ((theMode == 'heat') || (theMode == 'auto')) {
-                        	sendEvent(name: 'thermostatSetpointMin', value: sendValue, isStateChange: true, displayed: false)
+                        	sendEvent(name: 'thermostatSetpointMin', value: sendValue, /* isStateChange: true, */ displayed: false)
                             objectsUpdated++
                         }
-                        event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
+                        event = eventFront + [value: sendValue, /* isStateChange: true,*/ displayed: false]
                     }
                     break;
                     
 				case 'heatRangeHigh':
                   	if (isChange || (device.currentValue('heatingSetpointMax') != sendValue)) {
-                    	sendEvent(name: 'heatingSetpointMax', value: sendValue, isStateChange: true, displayed: false)
+                    	sendEvent(name: 'heatingSetpointMax', value: sendValue, /* isStateChange: true, */ displayed: false)
                         objectsUpdated++
                         def theMode = device.currentValue('thermostatMode')
                         if (theMode == 'heat') {
-                        	sendEvent(name: 'thermostatSetpointMax', value: sendValue, isStateChange: true, displayed: false)
+                        	sendEvent(name: 'thermostatSetpointMax', value: sendValue, /* isStateChange: true, */ displayed: false)
                             objectsUpdated++
                         }
-                        event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
+                        event = eventFront + [value: sendValue, /* isStateChange: true,*/  displayed: false]
                     }
                     break;
                     
 				case 'coolRangeLow':
                 	if (isChange || (device.currentValue('coolingSetpointMin') != sendValue)) {
-                    	sendEvent(name: 'coolingSetpointMin', value: sendValue, isStateChange: true, displayed: false)
+                    	sendEvent(name: 'coolingSetpointMin', value: sendValue, /* isStateChange: true, */ displayed: false)
                         objectsUpdated++
                         def theMode = device.currentValue('thermostatMode')
                         if (theMode == 'cool') {
-                        	sendEvent(name: 'thermostatSetpointMin', value: sendValue, isStateChange: true, displayed: false)
+                        	sendEvent(name: 'thermostatSetpointMin', value: sendValue, /* isStateChange: true, */ displayed: false)
                             objectsUpdated++
                         }
-                        event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
+                        event = eventFront + [value: sendValue, /* isStateChange: true, */ displayed: false]
                     }
                     break;
                     
 				case 'coolRangeHigh':
                 	if (isChange|| (device.currentValue('coolingSetpointMax') != sendValue)) {
-                    	sendEvent(name: 'coolingSetpointMax', value: sendValue, isStateChange: true, displayed: false)
+                    	sendEvent(name: 'coolingSetpointMax', value: sendValue, /* isStateChange: true, */ displayed: false)
                         def theMode = device.currentValue('thermostatMode')
                         if ((theMode == 'cool') || (theMode == 'auto')) {
-                        	sendEvent(name: 'thermostatSetpointMax', value: sendValue, isStateChange: true, displayed: false)
+                        	sendEvent(name: 'thermostatSetpointMax', value: sendValue, /* isStateChange: true, */ displayed: false)
                             objectsUpdated++
                         }
-                        event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
+                        event = eventFront + [value: sendValue, /* isStateChange: true,*/ displayed: false]
                     }
                     break;
 				
@@ -964,7 +952,7 @@ def generateEvent(Map results) {
 		generateSetpointEvent()
 		generateStatusEvent()
 	}
-    LOG("Updated ${objectsUpdated} object${objectsUpdated!=1?'s':''}",2,this,'info')
+    LOG("Updated ${objectsUpdated} object${objectsUpdated!=1?'s':''} (${now()-startMS}ms)",2,this,'info')
 }
 
 //return descriptionText to be shown on mobile activity feed
@@ -1458,7 +1446,9 @@ def generateSetpointEvent() {
 		case 'cool':
 			sendEvent(name:'thermostatSetpoint', value: "${coolingSetpoint}", displayed: false)
 			break;
-		
+/*		
+		// thermostatSetpoint is supposed to be a single number, not a range, so let heatingSetpoint/coolingSetpoint while 
+        // thermostatOperatingState is heating/cooling control this
 		case 'auto':
 			if (!usingSmartAuto()) {
 				// No Smart Auto, just regular auto
@@ -1472,7 +1462,9 @@ def generateSetpointEvent() {
 		case 'off':
 			sendEvent(name:'thermostatSetpoint', value:'Off', displayed: false)
 			break;
+*/
 	}
+
 }
 
 void raiseSetpoint() {
@@ -1534,7 +1526,7 @@ void lowerSetpoint() {
     	def heatingSetpoint = device.currentValue("heatingSetpoint")
 		def coolingSetpoint = device.currentValue("coolingSetpoint")
 		def thermostatSetpoint = device.currentValue("thermostatSetpoint").toDouble()
-    	if (device.currentValue("thermostatOpertaingState") == 'idle') {
+    	if (device.currentValue("thermostatOperatingState") == 'idle') {
     		if (thermostatSetpoint == heatingSetpoint) {
         		heatingSetpoint = heatingSetpoint + device.currentValue("heatDifferential").toDouble() 	// correct from the display value
             	thermostatSetpoint = heatingSetpoint
@@ -1577,7 +1569,7 @@ void alterSetpoint(temp) {
 	def heatingSetpoint = device.currentValue("heatingSetpoint")
 	def coolingSetpoint = device.currentValue("coolingSetpoint")
     def thermostatSetpoint = device.currentValue("thermostatSetpoint")
-    if (device.currentValue("thermostatOpertaingState") == 'idle') {
+    if (device.currentValue("thermostatOperatingState") == 'idle') {
     	if (thermostatSetpoint == heatingSetpoint) {
         	heatingSetpoint = heatingSetpoint + device.currentValue("heatDifferential").toDouble() 	// correct from the display value
             thermostatSetpoint = heatingSetpoint
