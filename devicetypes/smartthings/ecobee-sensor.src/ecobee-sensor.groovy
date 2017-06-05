@@ -21,10 +21,11 @@
  *	1.0.4  - Revised poll/refresh/ping commands
  *	1.0.5  - Improved Health Check reliability
  *  1.0.6  - Restored Fahrenheit 451 ("offline" display)
+ *	1.0.7  - Fixed indiscriminate Polling issue
  *
  */
 
-def getVersionNum() { return "1.0.6" }
+def getVersionNum() { return "1.0.7" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -34,7 +35,7 @@ metadata {
 		capability "Temperature Measurement"
 		capability "Motion Sensor"
 		capability "Refresh"
-		capability "Polling"
+		// capability "Polling"
         capability "Health Check"
 		
 		attribute "decimalPrecision", "number"
@@ -185,19 +186,26 @@ metadata {
 }
 
 void refresh() {
-	LOG( "Executing 'refresh' via parent", 2, this, "info")
-	parent.pollChildren(device.currentValue('thermostatId'))		// we have to poll our Thermostat to get updated
+    def tstatId = device.currentValue('thermostatId')
+	LOG( "Refreshed - executing parent.pollChildren(${tstatId})", 2, this, 'info')
+	parent.pollChildren(tstatId)		// we have to poll our Thermostat to get updated
 }
 
 void poll() {
-	LOG( "Executing 'poll' via parent", 2, this, "info")
-	parent.pollChildren(device.currentValue('thermostatId'))		// we have to poll our Thermostat to get updated
+	def tstatId = device.currentValue('thermostatId')
+	LOG( "Polled - executing parent.pollChildren(${tstatId})", 2, this, 'info')
+	parent.pollChildren(tstatId)		// we have to poll our Thermostat to get updated
 }
 
 // Health Check will ping us based on the frequency we configure in Ecobee (Connect) (derived from poll & watchdog frequency)
 void ping() {
-	LOG( "Pinged - executing 'poll' via parent", 2, this, "info")
-   	parent.pollChildren(device.currentValue('thermostatId')) 	// forcePoll
+	def tstatId = device.currentValue('thermostatId')
+	LOG( "Pinged - executing parent.pollChildren(${tstatId})", 2, this, 'info')
+	parent.pollChildren(tstatId)		// we have to poll our Thermostat to get updated
+}
+
+void installed() {
+	updated()
 }
 
 void updated() {
@@ -290,7 +298,7 @@ def addSensorToProgram(programId) {
     		result = parent.addSensorToProgram(this, device.currentValue('thermostatId'), getSensorId(), programId.toLowerCase())
             if (result) {
     			sendEvent(name: "${programId.capitalize()}", value: 'on', isStateChange: true, displayed: false)
-        		runIn(5, poll, [overwrite: true])
+        		runIn(5, refresh, [overwrite: true])
             }
        	} else {
        		result = true
@@ -319,7 +327,7 @@ def deleteSensorFromProgram(programId) {
     		result = parent.deleteSensorFromProgram(this, device.currentValue('thermostatId'), getSensorId(), programId.toLowerCase())
            	if (result) {	
     			sendEvent(name: "${programId.capitalize()}", value: 'off', isStateChange: true, displayed: false)
-        		runIn(5, poll, [overwrite: true])
+        		runIn(5, refresh, [overwrite: true])
     		} 
        	} else {
         	result = true	// not in this Program anyway
