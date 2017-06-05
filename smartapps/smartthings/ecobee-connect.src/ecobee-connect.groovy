@@ -46,13 +46,14 @@
  *	1.0.15-	 Added new Smart Switch/Dimmer/Vent Helper, updated Open Contacts Helper to also support Switches
  *	1.1.1 -	 Preparations for Ecobee Alerts support and Ask Alexa integrations
  *	1.1.2 -  Split data collection and event generation into 2 threads to support more tstats & more sensors (within the 20ms limit)
- *	1.1.3 -	 Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting 
+ *	1.1.3 -	 Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting
+ *	1.1.4 -  Minor scheduling adjustments
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.3a" }
+def getVersionNum() { return "1.1.4" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -430,7 +431,7 @@ def debugDashboardPage() {
 
 // pages that are part of Debug Dashboard
 def pollChildrenPage() {
-	LOG("=====> pollChildrenPage() entered.", 5)
+	LOG("=====> pollChildrenPage() entered.", 1)
     atomicState.forcePoll = true // Reset to force the poll to happen
 	pollChildren()
     
@@ -1238,6 +1239,7 @@ private def Boolean isDaemonAlive(daemon="all") {
 }
 
 private def Boolean spawnDaemon(daemon="all", unsched=true) {
+	// log.debug "spawnDaemon(${daemon}, ${unsched})"
 	// Daemon options: "poll", "auth", "watchdog", "all"    
     def daemonList = ["poll", "auth", "watchdog", "all"]
 	Random rand = new Random()
@@ -1320,6 +1322,7 @@ def poll() {
 
 // Called by scheduled() event handler
 def pollScheduled() {
+	// log.debug "pollScheduled()"
 	updateLastPoll(true)
 	if (debugLevel(4)) LOG("pollScheduled() - Running at ${atomicState.lastScheduledPollDate} (epic: ${atomicState.lastScheduledPoll})", 4, null, "trace")    
     return poll()
@@ -1327,7 +1330,8 @@ def pollScheduled() {
 
 // Called during initialization to get the inital poll
 def pollInit() {
-	if (debugLevel(5)) LOG("pollInit()", 5)
+	// log.debug "pollInit()"
+	if (debugLevel(4)) LOG("pollInit()", 4)
     // atomicState.forcePoll = true // Initialize the variable and force a poll even if there was one recently    
 	runIn(2, pollChildren, [overwrite: true]) 		// Hit the ecobee API for update on all thermostats, in 2 seconds
 }
@@ -1343,8 +1347,7 @@ def pollChildren(deviceId = null) {
     } else {
     	forcePoll = atomicState.forcePoll
     }
-
-	if (debugLevelFour) LOG("=====> pollChildren() - atomicState.forcePoll(${forcePoll})  atomicState.lastPoll(${atomicState.lastPoll})  now(${now()})  atomicState.lastPollDate(${atomicState.lastPollDate})", 4, child, "trace")
+	if (debugLevelFour) LOG("=====> pollChildren(${deviceId}) - atomicState.forcePoll(${forcePoll}) atomicState.lastPoll(${atomicState.lastPoll}) now(${now()}) atomicState.lastPollDate(${atomicState.lastPollDate})", 2, child, "trace")
     
 	if(apiConnected() == "lost") {
     	// Possibly a false alarm? Check if we can update the token with one last fleeting try...
@@ -1367,9 +1370,9 @@ def pollChildren(deviceId = null) {
     }    
     
     // Check if anything has changed in the thermostatSummary (really don't need to call EcobeeAPI if it hasn't).
-    String thermostatsToPoll = deviceId ?: getChildThermostatDeviceIdsString()
+    String thermostatsToPoll = (deviceId != null) ? deviceId : getChildThermostatDeviceIdsString()
     
-    boolean somethingChanged = forcePoll ?: checkThermostatSummary(thermostatsToPoll)
+    boolean somethingChanged = forcePoll ? forcePoll : checkThermostatSummary(thermostatsToPoll)
     if (!forcePoll) thermostatsToPoll = atomicState.changedThermostatIds
     // def checkedMS = now()
     
@@ -1380,13 +1383,12 @@ def pollChildren(deviceId = null) {
         LOG("${preText}Requesting updates for thermostat${thermostatsToPoll.contains(',')?'s':''} ${thermostatsToPoll}${forcePoll?' (forced)':''}", 2, null, 'trace')
     	pollEcobeeAPI(thermostatsToPoll)  // This will update the values saved in the state which can then be used to send the updates
         def polledMS = now()
-    	// log.debug "check: ${checkedMS-startMS}, poll: ${polledMS-checkedMS}, total: ${polledMS-startMS}"
         def prepTime = (polledMS-startMS)
         if (debugLevelFour) LOG("Completed prep (${prepTime}ms)",4,null,'trace')
     	if (alertsUpdated) {
-        	if (prepTime > 11000) {	runIn(2, 'generateAlertsAndEvents') } else { generateAlertsAndEvents() }
+        	if (prepTime > 11000) { runIn(2, 'generateAlertsAndEvents', [overwrite: true]) } else { generateAlertsAndEvents() }
         } else {
-        	if (prepTime > 11000) {	runIn(2, 'generateTheEvents') } else { generateTheEvents() }
+        	if (prepTime > 11000) { runIn(5, 'generateTheEvents', [overwrite: true]) } else { generateTheEvents() }
         }    
 	} else {   	 
         LOG(preText+'No updates...', 2, null, 'trace')
@@ -1398,18 +1400,22 @@ def generateAlertsAndEvents() {
 	generateTheEvents()
     def startMS = now()
     sendAlertEvents()
-    LOG("Sent alerts (${now()-startMS}ms)",4,null,'trace')
+    LOG("Sent alerts (${now()-startMS}ms)",2,null,'trace')
 }
 
 def generateTheEvents() {
-	def startMS = now()
-    atomicState.thermostats?.each { DNI ->
+	boolean debugLevelFour = debugLevel(4)
+	def startMS = (debugLevelFour) ? now() : 0
+    def stats = atomicState.thermostats
+    def sensors = atomicState.remoteSensorsData
+    //log.debug stats
+    stats?.each { DNI ->
     	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
-    }     
-    atomicState.remoteSensorsData?.each { DNI ->
+    }
+    sensors?.each { DNI ->
        	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
     }
-    LOG("Sent events (${now()-startMS}ms)",4,null,'trace')
+    if (debugLevelFour) LOG("Sent events (${now()-startMS}ms)",2,null,'trace')
 }
 
 // enables child SmartApps to send events to child Smart Devices using only the DNI
@@ -1421,7 +1427,7 @@ def generateChildEvent( childDNI, dataMap) {
 // 		 If the UI needs updating, the refresh now does a forcePoll on the entire device.
 private def generateEventLocalParams() {
 	// Iterate over all the children
-    if (debugLevel(3)) LOG("generateEventLocalParams() - updating API status", 3, null, 'info')
+    if (debugLevel(2)) LOG('generateEventLocalParams() - updating API status', 2, null, 'info')
     def connected = apiConnected()
     def data = [
        	apiConnected: connected
@@ -1984,7 +1990,7 @@ def sendAlertEvents() {
                 	closedAlerts = askAlexaAlerts[tid] - askAlexaAlerts[tid].intersect(allAlerts)
                 }
             	// def closedAlerts = allAlerts ? (askAlexaAlerts[tid] + allAlerts) - askAlexaAlerts[tid].intersect(allAlerts) : askAlexaAlerts[tid]
-                log.debug "Closed Alerts: ${closedAlerts}"
+                // log.debug "Closed Alerts: ${closedAlerts}"
                 if (closedAlerts) {
             		closedAlerts.each { msgID ->
                     	deleteAskAlexaAlert( 'Ecobee Status', msgID.toString() )
@@ -2498,7 +2504,7 @@ def updateThermostatData() {
                 } else {
                 	// It is past the expiry time, delete the message from the Ask Alexa queue(s)
                     if (askAlexaAppAlerts && askAlexaAppAlerts[tid] && (askAlexaAppAlerts[tid] != [])) { 
-                		log.debug "Expiry: ${askAlexaAppAlerts}, ${messageID}"
+                		// log.debug "Expiry: ${askAlexaAppAlerts}, ${messageID}"
         				if (askAlexaAppAlerts[tid]?.toString().contains(messageID)) {
 							deleteAskAlexaAlert('Ecobee Status', messageID)
         					askAlexaAppAlerts[tid].removeAll{ it == messageID }
@@ -2512,7 +2518,7 @@ def updateThermostatData() {
         	// We are connected, and Ask Alexa is enabled - check if we need to delete a prior Ask Alexa Alert
         	if (askAlexaAppAlerts && askAlexaAppAlerts[tid] && (askAlexaAppAlerts[tid] != [])) { 
         		String msgID = tid.toString()+'*disconnected'
-                log.debug "Connected! ${askAlexaAppAlerts}, ${msgID}"
+                // log.debug "Connected! ${askAlexaAppAlerts}, ${msgID}"
         		if (askAlexaAppAlerts[tid]?.toString().contains(msgID)) {
 					deleteAskAlexaAlert('Ecobee Status', msgID)
         			askAlexaAppAlerts[tid].removeAll{ it == msgID }
@@ -2765,7 +2771,7 @@ def updateThermostatData() {
         	def autoMode = statSettings?.autoHeatCoolFeatureEnabled
         	
             // Thermostat configuration stuff that almost never changes - if any one changes, send them all
-        	def neverList = [statMode,autoMode,coolStages,heatStages,heatHigh,heatLow,coolHigh,coolLow,heatRange,coolRange,climatesList,
+        	def neverList = [statMode,autoMode,coolStages,heatStages,/*heatHigh,heatLow,coolHigh,coolLow,*/heatRange,coolRange,climatesList,
         						hasHeatPump,hasForcedAir,hasElectric,hasBoiler,auxHeatMode,hasHumidifier,hasDehumidifier,tempHeatDiff,tempCoolDiff] 
  			if (forcePoll || (changeNever == [:]) || !changeNever.containsKey(tid) || (changeNever[tid] != neverList)) { 
                 def heatDiff = String.format("%.${apiPrecision}f", tempHeatDiff.toDouble().round(apiPrecision))
