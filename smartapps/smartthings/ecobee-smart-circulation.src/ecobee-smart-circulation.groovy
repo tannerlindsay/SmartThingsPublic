@@ -23,10 +23,11 @@
  *	1.0.1 - Tweaked LOG and setup for consistency
  *	1.0.2 - Better null variable handling
  *	1.0.3a - Updated settings and Disabled handling (fixed file)
- *	1.0.4a -	Enabled min/max to be 0 w/related optimizations
+ *	1.0.4a - Enabled min/max to be 0 w/related optimizations
+ *	1.0.5 - Fixed currentProgram issues
  *
  */
-def getVersionNum() { return "1.0.4a" }
+def getVersionNum() { return "1.0.5" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -137,23 +138,23 @@ def initialize() {
     atomicState.lastAdjustmentTime = now() - (60001 * fanAdjustMinutes.toLong()).toLong() // make sure we run on next deltaHandler event    
 
     subscribe(theThermostat, "thermostatOperatingState", modeOrProgramHandler)
-    subscribe(theThermostat, "currentProgramName", modeOrProgramHandler)
-    subscribe(theThermostat, "thermostatHold", modeOrProgramHandler)
+    subscribe(theThermostat, "currentProgram", modeOrProgramHandler)
+    // subscribe(theThermostat, "thermostatHold", modeOrProgramHandler)
     subscribe(location, "routineExecuted", modeOrProgramHandler)    
     subscribe(location, "mode", modeOrProgramHandler)
     
     subscribe(theSensors, "temperature", deltaHandler)
 
     Integer currentOnTime = theThermostat.currentValue('fanMinOnTime').isNumber() ? theThermostat.currentValue('fanMinOnTime').toInteger() : 0	
-    boolean vacationHold = (theThermostat.currentValue("currentProgramName") == "Vacation")
+    boolean vacationHold = (theThermostat.currentValue("currentProgram") == "Vacation")
     
-	log.debug "settings ${theModes}, location ${location.mode}, programs ${thePrograms} & ${programsList}, thermostat ${theThermostat.currentValue('currentProgramName')}, currentOnTime ${currentOnTime}"
+	log.debug "settings ${theModes}, location ${location.mode}, programs ${thePrograms} & ${programsList}, thermostat ${theThermostat.currentValue('currentProgram')}, currentOnTime ${currentOnTime}"
    
 	// Allow adjustments if thermostat OR location is currently as configured
     // Also allow if neither are configured
     boolean isOK = true
     if (theModes || thePrograms) {
-    	isOK = (theModes && theModes.contains(location.mode)) ? true : ((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgramName'))) ? true : false)
+    	isOK = (theModes && theModes.contains(location.mode)) ? true : ((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgram'))) ? true : false)
     }
     atomicState.isOK = isOK
     
@@ -192,7 +193,7 @@ def modeOrProgramHandler(evt=null) {
 	// Allow adjustments if location.mode OR thermostat.currentProgram match configuration settings
     def isOK = true
     if (theModes || thePrograms) {
-    	isOK = (theModes && theModes.contains(location.mode)) ? true : ((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgramName'))) ? true : false)
+    	isOK = (theModes && theModes.contains(location.mode)) ? true : ((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgram'))) ? true : false)
     }
 	atomicState.isOK = isOK
     
@@ -209,7 +210,9 @@ def deltaHandler(evt=null) {
         return
     }
     
-	def vacationHold = (theThermostat.currentValue("currentProgramName") == "Vacation")
+    def currentProgram = theThermostat.currentValue('currentProgram')
+    
+	def vacationHold = ( currentProgram == 'Vacation')
 	if (!vacationOverride && vacationHold) {
     	LOG("${theThermostat} is in Vacation mode, but not configured to override Vacation fanMinOnTime, returning", 4, "", 'warn')
         atomicState.amIRunning = false
@@ -217,12 +220,17 @@ def deltaHandler(evt=null) {
     }
     
 	if (evt) {
+    	if (evt.name == 'currentProgram') {
+        	LOG("deltaHandler() Program Changed to my Program (${evt.value})",2,null,'info')
+        } else if (evt.name == 'mode') {
+        	LOG("deltaHandler() Location Mode Changed to my Mode (${evt.value})",2,null,'info')
+        }
         if (minFanOnTime == maxFanOnTime) {
         	if (theThermostat.currentValue('fanMinOnTime') == minFanOnTime) {
-    			LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
+    			// LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
         		return // nothing to do
             } else {
-                LOG('deltaHandler() min==max, setting fanMinOnTime(min)',2,null,'info')
+                LOG("deltaHandler() min==max, setting fanMinOnTime(${minFanOnTime})",2,null,'info')
                 theThermostat.setFanMinOnTime(minFanOnTime)
                 return
             }
