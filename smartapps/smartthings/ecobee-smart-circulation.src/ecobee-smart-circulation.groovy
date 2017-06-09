@@ -23,9 +23,10 @@
  *	1.0.1 - Tweaked LOG and setup for consistency
  *	1.0.2 - Better null variable handling
  *	1.0.3a - Updated settings and Disabled handling (fixed file)
+ *	1.0.4 -	Enabled min/max to be 0 w/related optimizations
  *
  */
-def getVersionNum() { return "1.0.3a" }
+def getVersionNum() { return "1.0.4" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -69,9 +70,9 @@ def mainPage() {
         		paragraph("Increase Circulation time (min/hr) when the difference between the maximum and the minimum temperature reading of the above sensors is more than this.")
             	input(name: "deltaTemp", type: "enum", title: "Select temperature delta", required: true, defaultValue: "2.0", multiple:false, options:["1.0", "1.5", "2.0", "2.5", "3.0", "4.0", "5.0", "7.5", "10.0"])
             	paragraph("Minimum Circulation time (min/hr). Includes heating, cooling and fan only minutes.")
-            	input(name: "minFanOnTime", type: "number", title: "Set minimum fan on min/hr (0-${maxFanOnTime?maxFanOnTime:55})", required: true, defaultValue: "5", description: "5", range: "0..${maxFanOnTime?maxFanOnTime:55}", submitOnChange: true)
+            	input(name: "minFanOnTime", type: "number", title: "Set minimum fan on min/hr (0-${settings.maxFanOnTime!=null?settings.maxFanOnTime:55})", required: true, defaultValue: "5", description: "5", range: "0..${settings.maxFanOnTime!=null?settings.maxFanOnTime:55}", submitOnChange: true)
             	paragraph("Maximum Circulation time (min/hr).")
-            	input(name: "maxFanOnTime", type: "number", title: "Set maximum fan on min/hr (${minFanOnTime?minFanOnTime:5}-55)", required: true, defaultValue: "55", description: "55", range: "${minFanOnTime?minFanOnTime:5}..55", submitOnChange: true)
+            	input(name: "maxFanOnTime", type: "number", title: "Set maximum fan on min/hr (${settings.minFanOnTime!=null?settings.minFanOnTime:5}-55)", required: true, defaultValue: "55", description: "55", range: "${settings.minFanOnTime!=null?settings.minFanOnTime:5}..55", submitOnChange: true)
             	paragraph("Adjust Circulation time (min/hr) by this many minutes each adjustment.")
             	input(name: "fanOnTimeDelta", type: "number", title: "Minutes per adjustment (1-20)", required: true, defaultValue: "5", description: "5", range: "1..20")
             	paragraph("Minimum number of minutes between adjustments.")
@@ -86,7 +87,7 @@ def mainPage() {
 			section(title: "Enable only for specific modes or programs?") {
         		paragraph("Circulation time (min/hr) is only adjusted while in these modes *OR* programs. The time will remain at the last setting while in other modes. If you want different circulation times for other modes or programs, create multiple Smart Circulation handlers.")
             	input(name: "theModes",type: "mode", title: "Only when the Location Mode is", multiple: true, required: false)
-            	input(name: "thePrograms", type: "enum", title: "Only when the ${theThermostat ? theThermostat : 'thermostat'}'s Program is", multiple: true, required: false, options: getProgramsList())
+            	input(name: "thePrograms", type: "enum", title: "Only when the ${settings.theThermostat!=null?settings.theThermostat:'thermostat'}'s Program is", multiple: true, required: false, options: getProgramsList())
         	}
 		}
         
@@ -143,7 +144,7 @@ def initialize() {
     
     subscribe(theSensors, "temperature", deltaHandler)
 
-    Integer currentOnTime = theThermostat.currentValue('fanMinOnTime') ? theThermostat.currentValue('fanMinOnTime').toInteger() : 0	
+    Integer currentOnTime = theThermostat.currentValue('fanMinOnTime').isNumber() ? theThermostat.currentValue('fanMinOnTime').toInteger() : 0	
     boolean vacationHold = (theThermostat.currentValue("currentProgramName") == "Vacation")
     
 	log.debug "settings ${theModes}, location ${location.mode}, programs ${thePrograms} & ${programsList}, thermostat ${theThermostat.currentValue('currentProgramName')}, currentOnTime ${currentOnTime}"
@@ -173,16 +174,21 @@ def initialize() {
     			theThermostat.setFanMinOnTime(maxFanOnTime)
         		currentOnTime = maxFanOnTime
         	}
-    	}
+    	} else {
+        	atomicState.fanSinceLastAdjustment = true
+			deltaHandler()
+            currentOnTime = -1
+        }
     }
-    def vaca = vacationHold ? " is in Vacation mode, " : " "    
-    LOG("thermostat ${theThermostat}${vaca}circulation time is now ${currentOnTime} min/hr",2,"",'info')
-	atomicState.fanSinceLastAdjustment = true
-    if (isOK) deltaHandler()
+    if (currentOnTime > -1) {
+    	def vaca = vacationHold ? " is in Vacation mode, " : " "    
+    	LOG("thermostat ${theThermostat}${vaca}circulation time is now ${currentOnTime} min/hr",2,"",'info')
+    }
+
     LOG("Initialization complete", 4, "", 'trace')
 }
 
-def modeOrProgramHandler(evt=null) {
+def modeOrProgramHandler(evt=null) {    
 	// Allow adjustments if location.mode OR thermostat.currentProgram match configuration settings
     def isOK = true
     if (theModes || thePrograms) {
@@ -211,6 +217,10 @@ def deltaHandler(evt=null) {
     }
     
 	if (evt) {
+        if ((minFanOnTime == maxFanOnTime) && (theThermostat.currentValue('fanMinOnTime') == minFanOnTime)) {
+    		LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
+        	return // nothing to do
+    	}
         LOG("deltaHandler() entered with event ${evt.name}: ${evt.value}", 4, "", 'trace')
     } else {
     	LOG("deltaHandler() called directly", 4, "", 'trace')
@@ -252,13 +262,13 @@ def deltaHandler(evt=null) {
     atomicState.minDelta = atomicState.minDelta.toDouble() < delta ? atomicState.minDelta: delta
     
     // Makes no sense to change fanMinOnTime while heating or cooling is running - take action ONLY on events while idle or fan is running
-    def statState = theThermostat.currentValue("thermostatOperatingState")
+/*    def statState = theThermostat.currentValue("thermostatOperatingState")
     if ((statState != 'idle') && (statState != 'fan only')) {
     	LOG("${theThermostat} is ${statState}, no adjustments made", 4, "", 'trace' )
         atomicState.amIRunning = false
         return
     }
-
+*/
     if (atomicState.lastAdjustmentTime) {
         def timeNow = now()
         def minutesLeft = fanAdjustMinutes - ((timeNow - atomicState.lastAdjustmentTime) / 60000).toInteger()
