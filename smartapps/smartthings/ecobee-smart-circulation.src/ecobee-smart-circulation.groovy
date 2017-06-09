@@ -23,10 +23,10 @@
  *	1.0.1 - Tweaked LOG and setup for consistency
  *	1.0.2 - Better null variable handling
  *	1.0.3a - Updated settings and Disabled handling (fixed file)
- *	1.0.4 -	Enabled min/max to be 0 w/related optimizations
+ *	1.0.4a -	Enabled min/max to be 0 w/related optimizations
  *
  */
-def getVersionNum() { return "1.0.4" }
+def getVersionNum() { return "1.0.4a" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -217,9 +217,15 @@ def deltaHandler(evt=null) {
     }
     
 	if (evt) {
-        if ((minFanOnTime == maxFanOnTime) && (theThermostat.currentValue('fanMinOnTime') == minFanOnTime)) {
-    		LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
-        	return // nothing to do
+        if (minFanOnTime == maxFanOnTime) {
+        	if (theThermostat.currentValue('fanMinOnTime') == minFanOnTime) {
+    			LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
+        		return // nothing to do
+            } else {
+                LOG('deltaHandler() min==max, setting fanMinOnTime(min)',2,null,'info')
+                theThermostat.setFanMinOnTime(minFanOnTime)
+                return
+            }
     	}
         LOG("deltaHandler() entered with event ${evt.name}: ${evt.value}", 4, "", 'trace')
     } else {
