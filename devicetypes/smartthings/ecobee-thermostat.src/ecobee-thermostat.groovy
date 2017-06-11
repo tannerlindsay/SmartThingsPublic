@@ -38,10 +38,11 @@
  *	1.0.9  - Added support for new heating/coolingSetpointMin/Max
  *	1.0.10 - Restored Fahrenheit 451 (offline handling), fixed cancel vacation button
  *	1.0.11 - Tweaks to logs and thermostatDate display
+ *  1.0.12 - Fixed precision issue
  *
  */
 
-def getVersionNum() { return "1.0.11" }
+def getVersionNum() { return "1.0.12" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -640,7 +641,7 @@ def generateEvent(Map results) {
 
 	def updateTempRanges = false
     def precision = device.currentValue('decimalPrecision')
-    if (!precision == null) precision = isMetric ? 1 : 0
+    if (precision == null) precision = isMetric ? 1 : 0
     Integer objectsUpdated = 0
 	
 	if(results) {
