@@ -40,10 +40,11 @@
  *	1.0.11 - Tweaks to logs and thermostatDate display
  *  1.0.12 - Fixed precision issue
  *	1.0.13 - Fixed setpoint issues
+ *	1.0.14 - Fixed alterSetpoint scheduling issue
  *
  */
 
-def getVersionNum() { return "1.0.13" }
+def getVersionNum() { return "1.0.14" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1513,7 +1514,7 @@ void raiseSetpoint() {
 	sendEvent(name: "thermostatSetpoint", value: "${( wantMetric() ? targetvalue : targetvalue.round(0).toInteger() )}", displayed: false)
 	LOG("In mode $mode raiseSetpoint() to $targetvalue", 4)
 
-	def runWhen = parent.settings?.arrowPause ?: 4		
+	def runWhen = parent.settings?.arrowPause.toInteger() ?: 4		
 	runIn(runWhen, "alterSetpoint", [data: [value:targetvalue], overwrite: true]) //when user click button this runIn will be overwrite
 }
 
@@ -1560,7 +1561,7 @@ void lowerSetpoint() {
 		LOG("In mode $mode lowerSetpoint() to $targetvalue", 5, null, "info")
 
 		// Wait 4 seconds before sending in case we hit the buttons again
-	def runWhen = parent.settings?.arrowPause ?: 4		
+	def runWhen = parent.settings?.arrowPause.toInteger() ?: 4		
 	runIn(runWhen, "alterSetpoint", [data: [value:targetvalue], overwrite: true]) //when user click button this runIn will be overwrite
 	}
 }
