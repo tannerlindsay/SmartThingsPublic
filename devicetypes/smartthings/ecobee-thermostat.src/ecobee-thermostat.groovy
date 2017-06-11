@@ -39,10 +39,11 @@
  *	1.0.10 - Restored Fahrenheit 451 (offline handling), fixed cancel vacation button
  *	1.0.11 - Tweaks to logs and thermostatDate display
  *  1.0.12 - Fixed precision issue
+ *	1.0.13 - Fixed setpoint issues
  *
  */
 
-def getVersionNum() { return "1.0.12" }
+def getVersionNum() { return "1.0.13" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1477,9 +1478,9 @@ void raiseSetpoint() {
         return
 	}
 
-   	def heatingSetpoint = device.currentValue("heatingSetpoint").toDouble()
-	def coolingSetpoint = device.currentValue("coolingSetpoint").toDouble()
-    def thermostatSetpoint = device.currentValue("thermostatSetpoint").toDouble()
+   	def heatingSetpoint = device.currentValue("heatingSetpoint")
+	def coolingSetpoint = device.currentValue("coolingSetpoint")
+    def thermostatSetpoint = device.currentValue("thermostatSetpoint")
     if (device.currentValue("thermostatOpertaingState") == 'idle') {
     	if (thermostatSetpoint == heatingSetpoint) {
         	heatingSetpoint = heatingSetpoint + device.currentValue("heatDifferential").toDouble() 	// correct from the display value
@@ -1526,7 +1527,7 @@ void lowerSetpoint() {
     } else {
     	def heatingSetpoint = device.currentValue("heatingSetpoint")
 		def coolingSetpoint = device.currentValue("coolingSetpoint")
-		def thermostatSetpoint = device.currentValue("thermostatSetpoint").toDouble()
+		def thermostatSetpoint = device.currentValue("thermostatSetpoint")
     	if (device.currentValue("thermostatOperatingState") == 'idle') {
     		if (thermostatSetpoint == heatingSetpoint) {
         		heatingSetpoint = heatingSetpoint + device.currentValue("heatDifferential").toDouble() 	// correct from the display value
