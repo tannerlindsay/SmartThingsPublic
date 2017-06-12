@@ -19,16 +19,12 @@
  *  1.0.3	-	Optimized prior fix
  *	1.0.4	- 	Added support for switches, configurable open/closed/on/off
  *	1.0.5	-	Updated settings & disabled handling
+ *	1.0.6	-	Fixed errors in setup for contacts and switches
  *
  */
  
- /**
-  * TODO: Add support for more than on/off such as programs
-  */
-def getVersionNum() { return "1.0.5" }
+def getVersionNum() { return "1.0.6" }
 private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
-
-
 
 definition(
 	name: "ecobee Open Contacts",
@@ -54,27 +50,29 @@ def mainPage() {
         }
         
         section(title: "Select Thermostats") {
-        	if(settings.tempDisable) { paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler." }
+        	if(settings.tempDisable) { paragraph "WARNING: Temporarily Disabled per request. Turn back on below to activate handler." }
         	else { input ("myThermostats", "capability.Thermostat", title: "Pick Ecobee Thermostat(s)", required: true, multiple: true, submitOnChange: true) }          
 		}
 	
 		if (!settings.tempDisable && (settings.myThermostats?.size() > 0)) {
 
 			section(title: "Select Contact Sensors") {
-				input(name: "contactSensors", title: "Contact Sensors: ", type: "capability.contactSensor", required: false, multiple: true, description: "")
+				input(name: "contactSensors", title: "Contact Sensors: ", type: "capability.contactSensor", required: false, multiple: true, description: "", submitOnChange: true)
                 if (settings.contactSensors) {
-                	input(name: 'contactOpen', type: 'bool', title: 'Stop HVAC when contact(s) are open?', required: true, defaultValue: true)
+                	input(name: 'contactOpen', type: 'bool', title: 'Stop HVAC when contact(s) are open?', required: true, defaultValue: true, submitOnChange: true)
+                   	paragraph("HVAC will be turned off when above contact sensors are ${((settings.contactOpen==null)||settings.contactOpen)?'Open':'Closed'}")
                 }
 			}
             
             section(title: "Select Switches") {
-            	input(name: "theSwitches", title: "Switches: ", type: "capability.switch", required: false, multiple: true, description: "")
+            	input(name: "theSwitches", title: "Switches: ", type: "capability.switch", required: false, multiple: true, description: "", submitOnChange: true)
                 if (settings.theSwitches) {
-                	input(name: 'switchOn', type: 'bool', title: 'Stop HVAC when switch(es) are turned on?', required: true, defaultValue: true)
+                	input(name: 'switchOn', type: 'bool', title: 'Stop HVAC when switch(es) are turned on?', required: true, defaultValue: true, submitOnChange: true)
+                    paragraph("HVAC will be turned off when above switches are turned ${((settings.switchOn==null)||settings.switchOn)?'On':'Off'}")
                 }
         	}
             
-            if ((contactSwitches != null) && (theSwitches != null)) {
+            if ((settings.contactSensors != null) || (settings.theSwitches != null)) {
 				section(title: "Timers") {
 					input(name: "offDelay", title: "Delay time (in minutes) before turning off HVAC or Sending Notification [Default=5]", type: "enum", required: true, metadata: [values: [0, 1, 2, 3, 4, 5, 10, 15, 30]], defaultValue: 5)
 					input(name: "onDelay", title: "Delay time (in minutes) before turning HVAC back on  or Sending Notification [Default=0]", type: "enum", required: true, metadata: [values: [0, 1, 2, 3, 4, 5, 10, 15, 30]], defaultValue: "0")        	
