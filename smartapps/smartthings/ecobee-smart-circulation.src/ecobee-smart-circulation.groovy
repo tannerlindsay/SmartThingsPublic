@@ -25,9 +25,10 @@
  *	1.0.3a - Updated settings and Disabled handling (fixed file)
  *	1.0.4a - Enabled min/max to be 0 w/related optimizations
  *	1.0.5 - Fixed currentProgram issues
+ *	1.0.6 - Fixed tempDisable loophole
  *
  */
-def getVersionNum() { return "1.0.5" }
+def getVersionNum() { return "1.0.6" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -55,7 +56,7 @@ def mainPage() {
         }
         
         section(title: "Select Thermostat") {
-        	if(settings.tempDisable) {paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler."}
+        	if(settings.tempDisable) {paragraph "WARNING: Temporarily Disabled as requested. Turn back on below to activate handler."}
             else {
         		input(name: "theThermostat", type:"capability.Thermostat", title: "Use which Ecobee Thermostat", required: true, multiple: false, 
                 submitOnChange: true)
@@ -189,7 +190,13 @@ def initialize() {
     LOG("Initialization complete", 4, "", 'trace')
 }
 
-def modeOrProgramHandler(evt=null) {    
+def modeOrProgramHandler(evt=null) {
+	// Just exit if we are disabled...
+	if(settings.tempDisable == true) {
+    	LOG("temporarily disabled as per request.", 2, null, "warn")
+    	return true
+    }
+    
 	// Allow adjustments if location.mode OR thermostat.currentProgram match configuration settings
     def isOK = true
     if (theModes || thePrograms) {
@@ -204,6 +211,12 @@ def modeOrProgramHandler(evt=null) {
 }
 
 def deltaHandler(evt=null) {
+	// Just exit if we are disabled...
+	if(settings.tempDisable == true) {
+    	LOG("temporarily disabled as per request.", 2, null, "warn")
+    	return true
+    }
+    
 	def isOK = atomicState.isOK
     if ((isOK!=null) && (isOK==false)) {
     	if (atomicState.amIRunning) atomicState.amIRunning = false
