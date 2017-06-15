@@ -48,12 +48,13 @@
  *	1.1.2 -  Split data collection and event generation into 2 threads to support more tstats & more sensors (within the 20ms limit)
  *	1.1.3 -	 Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting
  *	1.1.4 -  Minor scheduling adjustments
+ *	1.1.5 -  Minor cleanup for Ask Alexa integration
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.4" }
+def getVersionNum() { return "1.1.5" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -123,8 +124,8 @@ def mainPage() {
     def readyToInstall 
     
     // Request the Ask Alexa Message Queue list as early as possible (isn't a problem if Ask Alexa isn't installed)
-    subscribe(location, "askAlexaMQ", askAlexaMQHandler)
-    sendLocationEvent(name: "askAlexaMQRefresh", value: "refresh")
+    subscribe(location, "AskAlexaMQ", askAlexaMQHandler)
+    sendLocationEvent(name: "AskAlexaMQRefresh", value: "refresh", isStateChange: true)
         
     // Only create the dummy devices if we aren't initialized yet
     if (!atomicState.initialized) {
@@ -849,7 +850,7 @@ def initialize() {
     }    
     
     subscribe(app, appHandler)
-    subscribe(location, "askAlexaMQ", askAlexaMQHandler)
+    subscribe(location, "AskAlexaMQ", askAlexaMQHandler)
 	// if (!settings.askAlexa) atomicState.askAlexaAlerts = null
     
     def nowTime = now()
@@ -2624,6 +2625,7 @@ def updateThermostatData() {
         Boolean isHeating = false
         Boolean isCooling = false
         Boolean smartRecovery = false
+        Boolean overCool = false
         
         // Let's deduce if we are in Smart Recovery mode
         if (equipStatus.contains('ea')) {
@@ -2634,7 +2636,15 @@ def updateThermostatData() {
             }
         } else if (equipStatus.contains('oo')) {
         	isCooling = true
-			if ((statSettings?.disablePreCooling == false) && (tempTemperature < (tempCoolingSetpoint - tempCoolDiff))) {
+            // Check if humidity > humidity setPoint, and tempTemperature > (coolingSetpoint - overCool)
+            if (hasDehumidifier) {
+            	if (runtime.actualHumidity > dehumidity) {
+                	if ((tempTemperature < tempCoolingSetpoint) && (tempTemperature >= (tempCoolingSetpoint - (statSettings?.dehumidifyOvercoolOffset?.toDouble()/10.0)))) {
+                    	overCool = true
+                    }
+                }         	
+            }
+			if (!overCool && ((statSettings?.disablePreCooling == false) && (tempTemperature < (tempCoolingSetpoint - tempCoolDiff)))) {
             	smartRecovery = true
             	equipStatus = equipStatus + ',smartRecovery'
             }
@@ -2663,10 +2673,11 @@ def updateThermostatData() {
         		thermOpStat = 'cooling'
                 equipOpStat = 'cooling'
                 if (smartRecovery) thermOpStat = 'cooling (smart recovery)'
+                // if (overCool) thermOpStat = 'cooling (overcool)'
 				if 		(equipStatus.contains('l1')) { equipOpStat = (coolStages == 1) ? 'cooling' : 'cool 1' }
 				else if (equipStatus.contains('l2')) { equipOpStat = 'cool 2' }
                 
-				if (equipStatus.contains('de')) { equipOpStat += ' deh' }	// dehumidifying if cool
+				if (equipStatus.contains('de')/*||overCool*/) { equipOpStat += ' deh' }	// dehumidifying if cool
                 
 			} else if (equipStatus.contains('de')) { // These can also run independent of heat/cool
         		equipOpStat = 'dehumidifier' 
