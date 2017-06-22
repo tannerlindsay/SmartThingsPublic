@@ -41,10 +41,11 @@
  *  1.0.12 - Fixed precision issue
  *	1.0.13 - Fixed setpoint issues
  *	1.0.14 - Fixed alterSetpoint scheduling issue
+ *	1.0.14a- Fixed null argument for setFanMinOnTime
  *
  */
 
-def getVersionNum() { return "1.0.14" }
+def getVersionNum() { return "1.0.14a" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1392,12 +1393,12 @@ def fanOff() {
 	setThermostatFanMode("off")
 }
 
-void setFanMinOnTime(minutes) {
+void setFanMinOnTime(minutes=10) {
 	LOG("setFanMinOnTime(${minutes})", 5, null, "trace")
     def deviceId = getDeviceId()
     
-	def howLong = 10	// default to 10 minutes, if no value supplied
-	if (minutes.isNumber()) howLong = minutes
+	Integer howLong = 10	// default to 10 minutes, if no value supplied
+	if (minutes && minutes.isNumber()) howLong = minutes.toInteger()
     if ((howLong >=0) && (howLong <=  55)) {
 		parent.setFanMinOnTime(this, deviceId, howLong)
         runIn(5, poll, [overwrite: true])
