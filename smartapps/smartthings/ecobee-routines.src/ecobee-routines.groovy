@@ -22,15 +22,17 @@
  * 1.0.1 - Updated LOG and setup for consistency
  * 1.0.2 - Fixed Ecobee Program changes when using Permanent/Indefinite or Default holdType
  * 1.0.3 - Updated settings and Disabled handling
+ * 1.0.4 - Added Cancel Vacation option
+ * 1.0.5 - Added optional fanMinOnTime setting when changing Ecobee programs (because we can't change fMOT while in Hold:)
  */
-def getVersionNum() { return "1.0.3" }
+def getVersionNum() { return "1.0.5" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
 definition(
 	name: "ecobee Routines",
 	namespace: "smartthings",
-	author: "Sean Kendall Schneyer (smartthings at linuxbox dot org)",
+	author: "Barry A. Burke (storageanarchy at gmail dot com)",
 	description: "Change ecobee Programs based on SmartThings Routine execution or Mode changes, OR change Mode/run Routine based on Ecobee Program/Vacation changes",
 	category: "Convenience",
 	parent: "smartthings:Ecobee (Connect)",
@@ -52,7 +54,7 @@ def mainPage() {
         
         section(title: "Select Thermostats") {
         	if(settings.tempDisable == true) {
-            	paragraph "WARNING: Temporarily Disabled as requested. Turn back on to activate handler."
+            	paragraph "WARNING: Temporarily Disabled as requested. Turn back on below to activate handler."
             } else {
         		input ("myThermostats", "capability.Thermostat", title: "Pick Ecobee Thermostat(s)", required: true, multiple: true, submitOnChange: true)            
 			}
@@ -98,13 +100,14 @@ def mainPage() {
 				section(title: "Actions") {
                 	if (settings.modeOrRoutine != "Ecobee Program") {
                 		def programs = getEcobeePrograms()
-                   		programs = programs + ["Resume Program"]
+                   		programs = programs + ["Resume Program"] + ["Cancel Vacation"]
                 		LOG("Found the following programs: ${programs}", 4)
                     
-	               		input(name: "whichProgram", title: "Switch to this Ecobee Program: ", type: "enum", required: true, multiple:false, description: "Tap to choose...", options: programs, submitOnChange: true)
-    	       	    	input(name: "fanMode", title: "Select a Fan Mode to use\n(Optional) ", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["On", "Auto", "default"]], submitOnChange: true)
-        	       		if(settings.whichProgram != "Resume Program") input(name: "holdType", title: "Select the Hold Type to use\n(Optional) ", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["Until I Change", "Until Next Program", "default"]], submitOnChange: true)
-            	   		input(name: "useSunriseSunset", title: "Also at Sunrise or Sunset?\n(Optional) ", type: "enum", required: false, multiple: true, description: "Tap to choose...", metadata:[values:["Sunrise", "Sunset"]], submitOnChange: true)                
+	               		input(name: "whichProgram", title: "Switch to this Ecobee Program:", type: "enum", required: true, multiple:false, description: "Tap to choose...", options: programs, submitOnChange: true)
+    	       	    	input(name: "fanMode", title: "Select a Fan Mode (optional)", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["On", "Auto", "default"]], submitOnChange: true)
+                        input(name: "fanMinutes", title: "Specify Fan Minimum Minutes per Hour (optional)", type: "number", required: false, multiple: false, description: "Tap to choose...", range:"0..55", submitOnChange: true)
+        	       		if ((settings.whichProgram!="Resume Program")&&(settings.whichProgram!="Cancel Vacation")) input(name: "holdType", title: "Select the Hold Type (optional)", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["Until I Change", "Until Next Program", "default"]], submitOnChange: true)
+            	   		input(name: "useSunriseSunset", title: "Also at Sunrise or Sunset? (optional) ", type: "enum", required: false, multiple: true, description: "Tap to choose...", metadata:[values:["Sunrise", "Sunset"]], submitOnChange: true)                
                 	} else {
                     	input(name: "runModeOrRoutine", title: "Change Mode or Execute Routine: ", type: "enum", required: true, multiple: false, description: "Tap to choose...", metadata:[values:["Mode", "Routine"]], submitOnChange: true)
                         if (settings.runModeOrRoutine == "Mode") {
@@ -156,7 +159,7 @@ def initialize() {
     } else if (settings.modeOrRoutine == "Mode") {
     	subscribe(location, "mode", changeProgramHandler)
     } else { // has to be "Ecobee Program"
-    	subscribe(myThermostats, "currentProgramName", changeSTHandler)
+    	subscribe(myThermostats, "currentProgram", changeSTHandler)
     }
    
     if(useSunriseSunset?.size() > 0) {
@@ -195,26 +198,36 @@ private def normalizeSettings() {
 	if (settings.modeOrRoutine == "Ecobee Program") return		// no normalization required
     
 	// whichProgram
-	state.programParam = ""
+	state.programParam = ''
+    state.doResumeProgram = false
+    state.doCancelVacation = false
 	if (whichProgram != null && whichProgram != "") {
     	if (whichProgram == "Resume Program") {
         	state.doResumeProgram = true
+        } else if (whichProgram == 'Cancel Vacation') {
+        	state.doCancelVacation = true
         } else {        	
     		state.programParam = whichProgram
     	}
 	}
     
     // fanMode
-    state.fanCommand = ""
-    if (fanMode != null && fanMode != "") {
-    	if (fanMode == "On") {
-        	state.fanCommand = "fanOn"
-        } else if (fanMode == "Auto") {
-        	state.fanCommand = "fanAuto"
+    state.fanCommand = ''
+    if (settings.fanMode && (settings.fanMode != '')) {
+    	if (fanMode == 'On') {
+        	state.fanCommand = 'fanOn'
+        } else if (fanMode == 'Auto') {
+        	state.fanCommand = 'fanAuto'
         } else {
-        	state.fanCommand = ""
+        	state.fanCommand = ''
         }
     }
+    
+    // fanMinutes
+    state.fanMinutes = ''
+    if (settings.fanMinutes && settings.fanMinutes.isNumber()) {
+    	state.fanMinutes = settings.fanMinutes.toInteger()
+   	}
     
     // holdType
     state.holdTypeParam = null
@@ -238,16 +251,7 @@ private def normalizeSettings() {
 
 def changeSTHandler(evt) {
 	LOG("changeSTHandler() entered with evt: ${evt.name}: ${evt.value}", 5)
-    
-    // adjust because currentProgramName carries some informational baggage
-    String newProgram = evt.value
-    if (newProgram.startsWith("Hold: ")) { 
-    	newProgram = newProgram.drop(6)
-    } else if (newProgram.startsWith("Away ")) {
-    	newProgram = newProgram.drop(5)
-    }
-    
-    if (settings.ctrlProgram.contains(newProgram)) {
+    if (settings.ctrlProgram.contains(evt.value)) {
     	if (!state.ecobeeThatChanged) {
         	state.ecobeeThatChanged = evt.displayName
             state.ecobeeNewProgram = evt.value
@@ -291,13 +295,8 @@ def runRoutine() {
 def changeProgramHandler(evt) {
 	LOG("changeProgramHander() entered with evt: ${evt.name}: ${evt.value}", 5)
 	
-    def gotEvent 
-    if (settings.modeOrRoutine == "Routine") {
-    	gotEvent = evt.displayName?.toLowerCase()
-    } else {
-    	gotEvent = evt.value?.toLowerCase()
-    }
-    LOG("Event name received (in lowercase): ${gotEvent}  and current expected: ${state.expectedEvent}", 5)
+    def gotEvent = (settings.modeOrRoutine == "Routine") ? evt.displayName?.toLowerCase() : evt.value?.toLowerCase()
+    LOG("Event name received (in lowercase): ${gotEvent} and current expected: ${state.expectedEvent}", 5)
 
     if ( !state.expectedEvent*.toLowerCase().contains(gotEvent) ) {
     	LOG("Received an mode/routine that we aren't watching. Nothing to do.", 4)
@@ -306,37 +305,56 @@ def changeProgramHandler(evt) {
     
     settings.myThermostats.each { stat ->
     	LOG("In each loop: Working on stat: ${stat}", 4, null, 'trace')
-    	// First let's change the Thermostat Program
-        if(state.doResumeProgram == true) {
+        def thermostatHold = stat.currentValue('thermostatHold')
+        boolean vacationHold = (thermostatHold == 'vacation')
+        // Can't change the program while in Vacation mode
+        if (vacationHold) {
+        	if (state.doCancelVacation) {
+            	stat.cancelVacation()
+                sendNotificationEvent("I also cancelled the active Vacation hold on ${stat}.")
+            } else if (state.doResumeProgram) {
+            	LOG("Can't Resume Program while in Vacation mode (${stat})",2,null,warn)
+           		sendNotificationEvent("I was asked to Resume Program on ${stat}, but it is currently in 'Vacation' mode so I ignored the request.")
+            } else {
+        		LOG("Can't change Program while in Vacation mode (${stat})",2,null,warn)
+           		sendNotificationEvent("I was asked to change ${stat} to ${state.programParam}, but it is currently in 'Vacation' mode so I ignored the request.")
+            }
+        } else if (state.doResumeProgram == true) {
         	LOG("Resuming Program for ${stat}", 4, null, 'trace')
-            if (stat.currentValue("thermostatHold") == 'hold') {
+            if (thermostatHold == 'hold') {
             	def scheduledProgram = stat.currentValue("scheduledProgram")
         		stat.resumeProgram(true) // resumeAll to get back to the scheduled program
 				sendNotificationEvent("And I resumed the scheduled ${scheduledProgram} program on ${stat}.")
             }
         } else {
-        	LOG("Setting Thermostat Program to programParam: ${state.programParam} and holdType: ${state.holdTypeParam}", 4, null, 'trace')
-            
+        	LOG("Setting Thermostat Program to programParam: ${state.programParam} and holdType: ${state.holdTypeParam}", 4, null, 'trace')      
             boolean done = false
-            def thermostatHold = stat.currentValue('thermostatHold')
-            if (stat.currentValue('currentProgram') == state.programParam) {
-            	if (thermostatHold == "") {
+            def currentProgram = stat.currentValue('currentProgram')
+            def currentProgramName = stat.currentValue('currentProgramName')
+            if (currentProgramName == state.programParam) {
+            	if (thermostatHold == '') {
+                	if (state.fanMinutes) stat.setFanMinOnTime(state.fanMinutes)
                 	sendNotificationEvent("And I verified that ${stat} is already in the ${state.programParam} program.")
                     done = true
                 }
-            } else if (thermostatHold == 'hold') {
+            } else if (currentProgramName.startsWith('Hold')) {
                 if (stat.currentValue('scheduledProgram') == state.programParam) {
                     stat.resumeProgram(true)	// resumeAll to get back to the originally scheduled program
+                    if (state.fanMinutes) stat.setFanMinOnTime(state.fanMinutes)
                     sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}.")
                     done = true
+                } else { 
+                	stat.resumeProgram(true)
+                    // done = false
                 }
-            }
-            if (!done) {    
+            } 
+            if (!done) {
+            	if (state.fanMinutes) stat.setFanMinOnTime(state.fanMinutes)
         		stat.setThermostatProgram(state.programParam, state.holdTypeParam)
 				sendNotificationEvent("And I set ${stat} to the ${state.programParam} program${(state.holdTypeParam!='nextTransition') ? ' indefinitely.' : '.'}")
             }
 		}
-        if (state.fanCommand != "" && state.fanCommand != null) stat."${state.fanCommand}"()
+        if (!vacationHold && state.fanCommand != "" && state.fanCommand != null) stat."${state.fanCommand}"()
     }
     return true
 }
