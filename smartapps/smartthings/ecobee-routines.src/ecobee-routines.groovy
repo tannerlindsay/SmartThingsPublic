@@ -24,8 +24,9 @@
  * 1.0.3 - Updated settings and Disabled handling
  * 1.0.4 - Added Cancel Vacation option
  * 1.0.5 - Added optional fanMinOnTime setting when changing Ecobee programs (because we can't change fMOT while in Hold:)
+ * 1.0.5a- Double check fanMinutes settings is valid
  */
-def getVersionNum() { return "1.0.5" }
+def getVersionNum() { return "1.0.5a" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -224,7 +225,7 @@ private def normalizeSettings() {
     }
     
     // fanMinutes
-    state.fanMinutes = ''
+    state.fanMinutes = null
     if (settings.fanMinutes && settings.fanMinutes.isNumber()) {
     	state.fanMinutes = settings.fanMinutes.toInteger()
    	}
@@ -333,14 +334,14 @@ def changeProgramHandler(evt) {
             def currentProgramName = stat.currentValue('currentProgramName')
             if (currentProgramName == state.programParam) {
             	if (thermostatHold == '') {
-                	if (state.fanMinutes) stat.setFanMinOnTime(state.fanMinutes)
+                	if (state.fanMinutes!=null) stat.setFanMinOnTime(state.fanMinutes)
                 	sendNotificationEvent("And I verified that ${stat} is already in the ${state.programParam} program.")
                     done = true
                 }
             } else if (currentProgramName.startsWith('Hold')) {
                 if (stat.currentValue('scheduledProgram') == state.programParam) {
                     stat.resumeProgram(true)	// resumeAll to get back to the originally scheduled program
-                    if (state.fanMinutes) stat.setFanMinOnTime(state.fanMinutes)
+                    if (state.fanMinutes!=null) stat.setFanMinOnTime(state.fanMinutes)
                     sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}.")
                     done = true
                 } else { 
@@ -349,7 +350,7 @@ def changeProgramHandler(evt) {
                 }
             } 
             if (!done) {
-            	if (state.fanMinutes) stat.setFanMinOnTime(state.fanMinutes)
+            	if (state.fanMinutes!=null) stat.setFanMinOnTime(state.fanMinutes) // do this before setting the Hold:, becuase you can't change it after the Hold:
         		stat.setThermostatProgram(state.programParam, state.holdTypeParam)
 				sendNotificationEvent("And I set ${stat} to the ${state.programParam} program${(state.holdTypeParam!='nextTransition') ? ' indefinitely.' : '.'}")
             }
