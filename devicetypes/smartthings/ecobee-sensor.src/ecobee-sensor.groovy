@@ -22,10 +22,12 @@
  *	1.0.5  - Improved Health Check reliability
  *  1.0.6  - Restored Fahrenheit 451 ("offline" display)
  *	1.0.7  - Fixed indiscriminate Polling issue
+ *  1.0.8  - Setting decimals=0 now also applies to value displayed in device lists
+ *	1.0.9  - Uses new Refresh icon
  *
  */
 
-def getVersionNum() { return "1.0.7" }
+def getVersionNum() { return "1.0.9" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -54,6 +56,7 @@ metadata {
         command "noOp"					// these are really for internal use only
         command "enableSmartRoom"
         command "disableSmartRoom"
+        command "doRefresh"
         
         command "addSensorToHome"
         command "addSensorToAway"
@@ -107,8 +110,13 @@ metadata {
             state "not supported", action: "noOp", nextState: "not supported", label: "N/A", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/notsupported_x.png"
 		}
         
-		standardTile("refresh", "device.thermostatMode", width: 1, height: 1,inactiveLabel: false, decoration: "flat") {
-            state "default", action:"refresh.refresh", label: "Refresh", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/header_ecobeeicon_blk.png"
+		//standardTile("refresh", "device.thermostatMode", width: 1, height: 1,inactiveLabel: false, decoration: "flat") {
+        //    state "default", action:"refresh.refresh", label: "Refresh", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/header_ecobeeicon_blk.png"
+		//}
+        
+        standardTile("refresh", "device.doRefresh", width: 1, height: 1, inactiveLabel: false, decoration: "flat") {
+            state "refresh", action:"doRefresh", nextState: 'updating', label: "Refresh", defaultState: true, icon:"https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/ecobee_refresh_green.png"
+            state "updating", label:"Working", icon: "st.motion.motion.inactive"
 		}
 
 		standardTile("Home", "device.Home", width: 1, height: 1, inactiveLabel: false, decoration: "flat") {
@@ -185,23 +193,29 @@ metadata {
 	}
 }
 
-void refresh() {
+void refresh(force=false) {
     def tstatId = device.currentValue('thermostatId')
-	LOG( "Refreshed - executing parent.pollChildren(${tstatId})", 2, this, 'info')
-	parent.pollChildren(tstatId)		// we have to poll our Thermostat to get updated
+	LOG( "Refreshed - executing parent.pollChildren(${tstatId}) ${force?'(forced)':''}", 2, this, 'info')
+	parent.pollChildren(tstatId,force)		// we have to poll our Thermostat to get updated
+}
+
+def doRefresh() {
+    refresh(state.lastDoRefresh?((now()-state.lastDoRefresh)<6000):false)
+    sendEvent(name: 'doRefresh', value: 'refresh', isStateChange: true, displayed: false)
+    state.lastDoRefresh = now()	// reset the timer after the UI has been updated
 }
 
 void poll() {
 	def tstatId = device.currentValue('thermostatId')
 	LOG( "Polled - executing parent.pollChildren(${tstatId})", 2, this, 'info')
-	parent.pollChildren(tstatId)		// we have to poll our Thermostat to get updated
+	parent.pollChildren(tstatId,false)		// we have to poll our Thermostat to get updated
 }
 
 // Health Check will ping us based on the frequency we configure in Ecobee (Connect) (derived from poll & watchdog frequency)
 void ping() {
 	def tstatId = device.currentValue('thermostatId')
 	LOG( "Pinged - executing parent.pollChildren(${tstatId})", 2, this, 'info')
-	parent.pollChildren(tstatId)		// we have to poll our Thermostat to get updated
+	parent.pollChildren(tstatId,true)		// we have to poll our Thermostat to get updated
 }
 
 void installed() {
@@ -245,6 +259,7 @@ def generateEvent(Map results) {
                     if (isChange) {
                     	if (precision == 0) {
                     		tempDisplay = value.toDouble().round(0).toInteger().toString() + '°'
+                            sendValue = value.toDouble().round(0).toInteger()								// Remove decimals in device lists also
                     	} else {
 							tempDisplay = String.format( "%.${precision.toInteger()}f", value.toDouble().round(precision.toInteger())) + '°'
                     	}
