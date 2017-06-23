@@ -26,9 +26,11 @@
  *	1.0.4a - Enabled min/max to be 0 w/related optimizations
  *	1.0.5 - Fixed currentProgram issues
  *	1.0.6 - Fixed tempDisable loophole
+ *	1.0.6a-	Minor updates
+ *  1.0.7 - More minor updates
  *
  */
-def getVersionNum() { return "1.0.6" }
+def getVersionNum() { return "1.0.7" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -160,21 +162,21 @@ def initialize() {
     atomicState.isOK = isOK
     
     if (isOK) {	
-		if (currentOnTime < minFanOnTime) {
+		if (currentOnTime < settings.minFanOnTime) {
     		if (vacationHold && vacationOverride) {
-        		theThermostat.setVacationFanMinOnTime(minFanOnTime)
-            	currentOnTime = minFanOnTime
+        		theThermostat.setVacationFanMinOnTime(settings.minFanOnTime)
+            	currentOnTime = settings.minFanOnTime
         	} else if (!vacationHold) {
-    			theThermostat.setFanMinOnTime(minFanOnTime)
-            	currentOnTime = minFanOnTime
+    			theThermostat.setFanMinOnTime(settings.minFanOnTime)
+            	currentOnTime = settings.minFanOnTime
         	}
-    	} else if (currentOnTime > maxFanOnTime) {
+    	} else if (currentOnTime > settings.maxFanOnTime) {
     		if (vacationHold && vacationOverride) {
-        		theThermostat.setVacationFanMinOnTime(maxFanOnTime)
-        		currentOnTime = maxFanOnTime
+        		theThermostat.setVacationFanMinOnTime(settings.maxFanOnTime)
+        		currentOnTime = settings.maxFanOnTime
         	} else if (!vacationHold) {
-    			theThermostat.setFanMinOnTime(maxFanOnTime)
-        		currentOnTime = maxFanOnTime
+    			theThermostat.setFanMinOnTime(settings.maxFanOnTime)
+        		currentOnTime = settings.maxFanOnTime
         	}
     	} else {
         	atomicState.fanSinceLastAdjustment = true
@@ -233,18 +235,19 @@ def deltaHandler(evt=null) {
     }
     
 	if (evt) {
+    	LOG("deltaHandler() device: ${evt.device}, name: ${evt.name}, value: ${evt.value}",3,null,'trace')
     	if (evt.name == 'currentProgram') {
-        	LOG("deltaHandler() Program Changed to my Program (${evt.value})",2,null,'info')
+        	LOG("deltaHandler() Program Changed to my Program (${evt.value})",3,null,'info')
         } else if (evt.name == 'mode') {
-        	LOG("deltaHandler() Location Mode Changed to my Mode (${evt.value})",2,null,'info')
+        	LOG("deltaHandler() Location Mode Changed to my Mode (${evt.value})",3,null,'info')
         }
-        if (minFanOnTime == maxFanOnTime) {
-        	if (theThermostat.currentValue('fanMinOnTime') == minFanOnTime) {
+        if (settings.minFanOnTime == settings.maxFanOnTime) {
+        	if (theThermostat.currentValue('fanMinOnTime').toInteger() == settings.minFanOnTime.toInteger()) {
     			// LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
         		return // nothing to do
             } else {
-                LOG("deltaHandler() min==max, setting fanMinOnTime(${minFanOnTime})",2,null,'info')
-                theThermostat.setFanMinOnTime(minFanOnTime)
+                LOG("deltaHandler() min==max, setting fanMinOnTime(${settings.minFanOnTime})",3,null,'info')
+                theThermostat.setFanMinOnTime(settings.minFanOnTime)
                 return
             }
     	}
@@ -311,14 +314,15 @@ def deltaHandler(evt=null) {
 	
 	if (delta >= deltaTemp.toDouble()) {			// need to increase recirculation (fanMinOnTime)
 		newOnTime = currentOnTime + fanOnTimeDelta
-		if (newOnTime > maxFanOnTime) {
-			newOnTime = maxFanOnTime
+		if (newOnTime > settings.maxFanOnTime) {
+			newOnTime = settings.maxFanOnTime
 		}
 		if (currentOnTime != newOnTime) {
-			LOG("Temperature delta is ${String.format("%.2f",delta)}/${deltaTemp}, increasing circulation time for ${theThermostat} to ${newOnTime} min/hr",2,"",'info')
+			LOG("Temperature delta is ${String.format("%.2f",delta)}/${deltaTemp}, increasing circulation time for ${theThermostat} to ${newOnTime} min/hr",3,"",'info')
 			if (vacationHold) {
             	theThermostat.setVacationFanMinOnTime(newOnTime)
             } else {
+            	LOG("deltaHandler: calling setFanMinOnTime(${newOnTime})",3,null,'info')
             	theThermostat.setFanMinOnTime(newOnTime)
             }
             atomicState.fanSinceLastAdjustment = false
@@ -332,14 +336,15 @@ def deltaHandler(evt=null) {
         if (target > deltaTemp.toDouble()) target = (deltaTemp.toDouble() * 0.66667).round(2)	// arbitrary - we have to be less than deltaTemp
     	if (delta <= target) {			// start adjusting back downwards once we get within 1F or .5556C
 			newOnTime = currentOnTime - fanOnTimeDelta
-			if (newOnTime < minFanOnTime) {
-				newOnTime = minFanOnTime
+			if (newOnTime < settings.minFanOnTime) {
+				newOnTime = settings.minFanOnTime
 			}
             if (currentOnTime != newOnTime) {
-           		LOG("Temperature delta is ${String.format("%.2f",delta)}/${String.format("%.2f",target)}, decreasing circulation time for ${theThermostat} to ${newOnTime} min/hr",2,"",'info')
+           		LOG("Temperature delta is ${String.format("%.2f",delta)}/${String.format("%.2f",target)}, decreasing circulation time for ${theThermostat} to ${newOnTime} min/hr",3,"",'info')
 				if (vacationHold) {
                 	theThermostat.setVacationFanMinOnTime(newOnTime)
                 } else {
+                	LOG("deltaHandler: calling setFanMinOnTime(${newOnTime})",3,null,'info')
                 	theThermostat.setFanMinOnTime(newOnTime)
                 }
                 atomicState.fanSinceLastAdjustment = false
