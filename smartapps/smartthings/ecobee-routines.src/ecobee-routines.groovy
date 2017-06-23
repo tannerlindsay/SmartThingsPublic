@@ -25,8 +25,9 @@
  * 1.0.4 - Added Cancel Vacation option
  * 1.0.5 - Added optional fanMinOnTime setting when changing Ecobee programs (because we can't change fMOT while in Hold:)
  * 1.0.5a- Double check fanMinutes settings is valid
+ * 1.0.6 - Minor optimizations and LOGging fixups
  */
-def getVersionNum() { return "1.0.5a" }
+def getVersionNum() { return "1.0.6" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -314,10 +315,10 @@ def changeProgramHandler(evt) {
             	stat.cancelVacation()
                 sendNotificationEvent("I also cancelled the active Vacation hold on ${stat}.")
             } else if (state.doResumeProgram) {
-            	LOG("Can't Resume Program while in Vacation mode (${stat})",2,null,warn)
+            	LOG("Can't Resume Program while in Vacation mode (${stat})",2,null,'warn')
            		sendNotificationEvent("I was asked to Resume Program on ${stat}, but it is currently in 'Vacation' mode so I ignored the request.")
             } else {
-        		LOG("Can't change Program while in Vacation mode (${stat})",2,null,warn)
+        		LOG("Can't change Program while in Vacation mode (${stat})",2,null,'warn')
            		sendNotificationEvent("I was asked to change ${stat} to ${state.programParam}, but it is currently in 'Vacation' mode so I ignored the request.")
             }
         } else if (state.doResumeProgram == true) {
