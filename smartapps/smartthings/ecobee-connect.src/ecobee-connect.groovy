@@ -49,12 +49,14 @@
  *	1.1.3 -	 Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting
  *	1.1.4 -  Minor scheduling adjustments
  *	1.1.5 -  Minor cleanup for Ask Alexa integration
+ *	1.1.6 -  Minor tweaks for updated Thermostat device
+ *	1.1.7 -  Beginnings of support for holdHours (latent - not yet enabled)
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.5" }
+def getVersionNum() { return "1.1.7" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -1337,14 +1339,14 @@ def pollInit() {
 	runIn(2, pollChildren, [overwrite: true]) 		// Hit the ecobee API for update on all thermostats, in 2 seconds
 }
 
-def pollChildren(deviceId = null) {
+def pollChildren(deviceId=null,force=false) {
 	def startMS = now()
 	boolean debugLevelFour = debugLevel(4)
 	if (debugLevelFour) LOG("pollChildren() - deviceId ${deviceId}", 4, child, 'trace')
     def forcePoll
     if (deviceId != null) {
-    	atomicState.forcePoll = true
-        forcePoll = true
+    	atomicState.forcePoll = force 	//true
+        forcePoll = force 				//true
     } else {
     	forcePoll = atomicState.forcePoll
     }
@@ -2545,11 +2547,13 @@ def updateThermostatData() {
                     	} else if ((statMode == 'cool') && (runningEvent.fan != schedClimateRef.coolFan)) {
                     		currentClimateName = 'Hold: Fan'
                     	} else {
-                        	currentClimateName = 'Auto'
+                        	currentClimateName = 'Hold: Temp'
                     	}
+                        currentClimate = 'Auto'
                 	} else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
                 		// currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
                         currentClimateName = 'Hold'
+                        currentClimate = 'Hold'
                 	}// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
                     break;
                 case 'vacation':
@@ -3071,7 +3075,7 @@ def setFanMinOnTime(child, deviceId, howLong) {
 	LOG("setFanMinOnTime(${howLong})", 4, child)
     
     if (!howLong.isNumber() || (howLong.toInteger() < 0) || howLong.toInteger() > 55) {
-    	LOG("setFanMinOnTime() - Invalid Argument ${howLong}",4,child,'warn')
+    	LOG("setFanMinOnTime() - Invalid Argument ${howLong}",2,child,'warn')
         return false
     }
     
@@ -3088,7 +3092,7 @@ def setFanMinOnTime(child, deviceId, howLong) {
 def setVacationFanMinOnTime(child, deviceId, howLong) {
 	LOG("setVacationFanMinOnTime(${howLong})", 4, child)   
     if (!howLong.isNumber() || (howLong.toInteger() < 0) || howLong.toInteger() > 55) {		// Documentation says 60 is the max, but the Ecobee3 thermostat maxes out at 55 (makes 60 = 0)
-    	LOG("setVacationFanMinOnTime() - Invalid Argument ${howLong}",4,child,'warn')
+    	LOG("setVacationFanMinOnTime() - Invalid Argument ${howLong}",2,child,'warn')
         return false
     }
     
@@ -3101,7 +3105,7 @@ def setVacationFanMinOnTime(child, deviceId, howLong) {
     	if (hasEvent && (evt.type != "vacation")) hasEvent = false	// we only override vacation fanMinOnTime setting
     }
   	if (!hasEvent) {
-    	LOG("setVacationFanMinOnTime() - Vacation not active on thermostatId ${deviceId}", 4, child, 'warn')
+    	LOG("setVacationFanMinOnTime() - Vacation not active on thermostatId ${deviceId}", 2, child, 'warn')
         return false
     }
     if (evt.fanMinOnTime.toInteger() == howLong.toInteger()) return true	// didn't need to do anything!
@@ -3258,7 +3262,7 @@ def setFanMode(child, fanMode, deviceId, sendHoldType=null) {
     return result    
 }
 
-def setProgram(child, program, String deviceId, sendHoldType=null) {
+def setProgram(child, program, String deviceId, sendHoldType=null, sendHoldHours=2) {
 	// NOTE: Will use only the first program if there are two with the same exact name
 	LOG("setProgram(${program}) for ${deviceId} - child ${child}", 2, child, 'info')    
     // def climateRef = program.toLowerCase()   
@@ -3274,7 +3278,10 @@ def setProgram(child, program, String deviceId, sendHoldType=null) {
     if (climate == null) { return false }
     def theHoldType = sendHoldType ? sendHoldType : whatHoldType()
     
-	def jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+theHoldType+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
+    // Need to add holdHours to 
+    def hours = ''
+    if (theHoldType == 'holdHours') hours = '","holdHours":"'+sendHoldHours
+	def jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+theHoldType+hours+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
 
     LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)    
 	def result = sendJson(child, jsonRequestBody)	
