@@ -43,10 +43,11 @@
  *	1.0.14 - Fixed alterSetpoint scheduling issue
  *	1.1.1  - Major Update: Prevent changes while in Vacation mode, new active UI buttons, re-enabled mode/off & fanMode cycle
  *	1.1.2  - Clean up for release
+ *  1.1.2a - Typo
  *
  */
 
-def getVersionNum() { return "1.1.2" }
+def getVersionNum() { return "1.1.2a" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1323,7 +1324,7 @@ void resumeProgram(resumeAll=true) {
 	String currentProgramName = device.currentValue('currentProgramName')
 	resumeProgramInternal(resumeAll)
     if (currentProgramName.startsWith('Hold:')) {
-    	updates = ['thermostatOperatingState':'idle','equipmentOperatingState':'idle']
+    	def updates = ['thermostatOperatingState':'idle','equipmentOperatingState':'idle']
         generateEvent(updates)
     }
 }
