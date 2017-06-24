@@ -850,7 +850,7 @@ def generateEvent(Map results) {
 					break;
                     
                 case 'currentProgram':
-                	log.debug "currentProgram: ${sendValue}"
+                	//log.debug "currentProgram: ${sendValue}"
                 	switch (sendValue) {
                     	case 'Home':
                         	disableHomeButton()
@@ -1173,7 +1173,7 @@ private def enableAllProgramButtons() {
 }
 private def updateProgramButtons() {
 	def currentProgram = device.currentValue('currentProgram')
-    log.debug "Program = ${currentProgram}"
+    // log.debug "Program = ${currentProgram}"
 	if (currentProgram=='Home') {sendEvent(name:'setHome', value:'home dis', displayed:false)} else {sendEvent(name:'setHome', value:'home', displayed:false)}
     if (currentProgram=='Away') {sendEvent(name:'setAway', value:'away dis', displayed:false)} else {sendEvent(name:'setAway', value:'away', displayed:false)}
     if (currentProgram=='Sleep') {sendEvent(name:'setSleep', value:'sleep dis', displayed:false)} else {sendEvent(name:'setSleep', value:'sleep', displayed:false)}
