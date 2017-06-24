@@ -51,12 +51,13 @@
  *	1.1.5 -  Minor cleanup for Ask Alexa integration
  *	1.1.6 -  Minor tweaks for updated Thermostat device
  *	1.1.7 -  Beginnings of support for holdHours (latent - not yet enabled)
+ *	1.1.8 -	 Added support for greying out current Programs also
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.7" }
+def getVersionNum() { return "1.1.8" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -2541,7 +2542,7 @@ def updateThermostatData() {
             		if (tempClimateRef != '') {
 						currentClimate = (program.climates.find { it.climateRef == tempClimateRef }).name
                			currentClimateName = 'Hold: ' + currentClimate
-                	} else if (runningEvent.name == 'auto') {		// Handle the "auto" climates (includes fan on override, and maybe the Smart Recovery?)
+                	} else if ((runningEvent.name=='auto')||(runningEvent.name=='hold')) {		// Handle the "auto" climates (includes fan on override, and maybe the Smart Recovery?)
                     	if ((statMode == "heat") && (runningEvent.fan != schedClimateRef.heatFan)) {
                        		currentClimateName = 'Hold: Fan'
                     	} else if ((statMode == 'cool') && (runningEvent.fan != schedClimateRef.coolFan)) {
@@ -2549,12 +2550,12 @@ def updateThermostatData() {
                     	} else {
                         	currentClimateName = 'Hold: Temp'
                     	}
-                        currentClimate = 'Auto'
-                	} else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
+                        currentClimate = runningEvent.name.capitalize()
+                	} //else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
                 		// currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
-                        currentClimateName = 'Hold'
-                        currentClimate = 'Hold'
-                	}// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
+                        //currentClimateName = 'Hold'
+                        //currentClimate = 'Hold'
+                	//}// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
                     break;
                 case 'vacation':
                		currentClimateName = 'Vacation'
@@ -3054,6 +3055,10 @@ def resumeProgram(child, String deviceId, resumeAll=true) {
     
 	result = sendJson(jsonRequestBody) && result
     LOG("resumeProgram(${resumeAll}) returned ${result}", 3, child,'info')
+    if (result) {
+    	// Update the device attributes that it can't see but needs in order to display the proper multiAttributeTile parameters
+        // heatingSetpoint, coolingSetpoint, 
+    }
     atomicState."previousHVACMode${deviceId}" = null
     atomicState."previousFanMinOnTime${deviceId}" = null
     return result
@@ -3203,7 +3208,7 @@ def setMode(child, mode, deviceId) {
     LOG("setMode to ${mode} with result ${result}", 4, child)
 	if (result) {
     	LOG("setMode(${mode}) returned ${result}", 4, child, "info")
-    	child.generateQuickEvent("thermostatMode", mode, 15)
+    	// child.generateQuickEvent("thermostatMode", mode, 15)
     } else {
     	LOG("setMode(${mode}) - Failed", 1, child, "warn")
     }
@@ -3280,13 +3285,26 @@ def setProgram(child, program, String deviceId, sendHoldType=null, sendHoldHours
     
     // Need to add holdHours to 
     def hours = ''
-    if (theHoldType == 'holdHours') hours = '","holdHours":"'+sendHoldHours
+    if (theHoldType == 'holdHours') hours = '","holdHours":"'+sendHoldHours.toString()
 	def jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+theHoldType+hours+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
 
     LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)    
 	def result = sendJson(child, jsonRequestBody)	
     LOG("setProgram(${climateRef}) returned ${result}", 4, child, 'info')
     
+    if (result) { 
+    	// send the new heat/cool setpoints and ProgramId to the DTH - it will update the rest of the related displayed values itself
+    	Integer apiPrecision = usingMetric ? 2 : 1					// highest precision available from the API
+    	Integer userPrecision = getTempDecimals()						// user's requested display precision
+   		Double tempHeatAt = climate.heatTemp.toDouble()
+        Double tempCoolAt = climate.coolTemp.toDouble()
+        def tempHeatingSetpoint = myConvertTemperatureIfNeeded( (tempHeatAt / 10.0), 'F', apiPrecision)
+       	def tempCoolingSetpoint = myConvertTemperatureIfNeeded( (tempCoolAt / 10.0), 'F', apiPrecision)
+    	def updates = ['heatingSetpoint':String.format("%.${userPrecision}f", tempHeatingSetpoint?.toDouble().round(userPrecision)),
+        			   'coolingSetpoint':String.format("%.${userPrecision}f", tempCoolingSetpoint?.toDouble().round(userPrecision)),
+                       'currentProgramId':climateRef]
+        child.generateEvent(updates)	// force-update the calling device attributes that it can't see
+	}
     return result
 }
 
