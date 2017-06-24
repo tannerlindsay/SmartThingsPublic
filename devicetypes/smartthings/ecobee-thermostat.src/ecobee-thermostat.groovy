@@ -44,10 +44,11 @@
  *	1.1.1  - Major Update: Prevent changes while in Vacation mode, new active UI buttons, re-enabled mode/off & fanMode cycle
  *	1.1.2  - Clean up for release
  *  1.1.2a - Typo
+ *	1.1.3  - Logic correction for Program/Fan/Mode changes
  *
  */
 
-def getVersionNum() { return "1.1.2a" }
+def getVersionNum() { return "1.1.3" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -841,7 +842,7 @@ def generateEvent(Map results) {
                         def buttonValue = sendValue.startsWith('Hold') ? 'resume' : 'resume dis'
                         sendEvent(name: 'resumeProgram', value: buttonValue, displayed: false, isStateChange: true)	// change the button to Resume Program
                     }
-					if (true) event = eventFront + [value: sendValue, descriptionText: progText, isStateChange: true, displayed: true]
+					if (isChange) event = eventFront + [value: sendValue, descriptionText: progText, isStateChange: true, displayed: true]
 					break;
 				
 				case 'apiConnected':
@@ -895,7 +896,7 @@ def generateEvent(Map results) {
 					break;
 				
 				case 'thermostatMode':
-					if (true) {			// assume always isStateChange, because button presses will update this also...
+					if (isChange) {			// assume always isStateChange, because button presses will update this also...
                     	event = eventFront + [value: sendValue, descriptionText: "Thermostat Mode is ${sendValue}", isStateChange: true, displayed: true]
                         switch (sendValue) {
                         	case 'off':
@@ -928,7 +929,7 @@ def generateEvent(Map results) {
 		            break;
 				
         		case 'thermostatFanMode':
-					if (true) {
+					if (isChange) {
                     	event = eventFront + [value: sendValue, descriptionText: "Fan Mode is ${sendValue}", isStateChange: true, displayed: true]
                         if (device.currentValue('thermostatHold') != 'vacation') {
                         	sendEvent(name: 'thermostatFanModeDisplay', value: sendValue, isStateChange: true, displayed: false)
