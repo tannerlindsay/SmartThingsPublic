@@ -52,12 +52,13 @@
  *	1.1.6 -  Minor tweaks for updated Thermostat device
  *	1.1.7 -  Beginnings of support for holdHours (latent - not yet enabled)
  *	1.1.8 -	 Added support for greying out current Programs also
+ *	1.1.9 -  Fixed notifications, cleaned up preferences UI
  *
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.8" }
+def getVersionNum() { return "1.1.9" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -280,18 +281,17 @@ def thermsPage(params) {
     LOG("thermsPage() starting settings: ${settings}")
     LOG("thermsPage() params passed? ${params}", 4, null, "trace")
 
-    dynamicPage(name: "thermsPage", title: "Select Thermostats", params: params, nextPage: "", content: "thermsPage", uninstall: false) {    
-    	section("Units") {
-        	paragraph "NOTE: The units type (F or C) is determined by your Hub Location settings automatically. Please update your Hub settings (under My Locations) to change the units used. Current value is ${getTemperatureScale()}."
-        }
-    	section("Select Thermostats") {
+    dynamicPage(name: "thermsPage", title: "Thermostat Selection", params: params, nextPage: "", content: "thermsPage", uninstall: false) {    
+    	section("Tap below to see the list of Ecobee thermostats available in your ecobee account and select the ones you want to connect to SmartThings.") {
 			LOG("thermsPage(): atomicState.settingsCurrentTherms=${atomicState.settingsCurrentTherms}   settings.thermostats=${settings.thermostats}", 4, null, "trace")
 			if (atomicState.settingsCurrentTherms != settings.thermostats) {
 				LOG("atomicState.settingsCurrentTherms != settings.thermostats determined!!!", 4, null, "trace")		
 			} else { LOG("atomicState.settingsCurrentTherms == settings.thermostats: No changes detected!", 4, null, "trace") }
-        	paragraph "Tap below to see the list of ecobee thermostats available in your ecobee account and select the ones you want to connect to SmartThings."
 			input(name: "thermostats", title:"Select Thermostats", type: "enum", required:false, multiple:true, description: "Tap to choose", params: params, metadata:[values:stats], submitOnChange: true)        
-        }      
+        }
+        section("NOTE:\n\nThe temperature units (F or C) is determined by your Location settings automatically. Please update your Hub settings " + 
+        	"(under My Locations) to change the units used.\n\nThe current value is ${getTemperatureScale()}.") {
+        }
     }      
 }
 
@@ -306,23 +306,22 @@ def sensorsPage() {
     
     LOG("options = getEcobeeSensors == ${options}")
 
-    dynamicPage(name: "sensorsPage", title: "Select Sensors", nextPage: "") {
+    dynamicPage(name: "sensorsPage", title: "Sensor Selection", nextPage: "") {
 		if (numFound > 0)  {
-			section("Select Sensors"){
+			section("Tap below to see the list of ecobee sensors available for the selected thermostat(s) and choose the ones you want to connect to SmartThings."){
 				LOG("sensorsPage(): atomicState.settingsCurrentSensors=${atomicState.settingsCurrentSensors}   settings.ecobeesensors=${settings.ecobeesensors}", 4, null, "trace")
 				if (atomicState.settingsCurrentSensors != settings.ecobeesensors) {
 					LOG("atomicState.settingsCurrentSensors != settings.ecobeesensors determined!!!", 4, null, "trace")					
 				} else { LOG("atomicState.settingsCurrentSensors == settings.ecobeesensors: No changes detected!", 4, null, "trace") }
-				paragraph "Tap below to see the list of ecobee sensors available for the selected thermostat(s) and select the ones you want to connect to SmartThings."
-                if (settings.showThermsAsSensor) { paragraph "NOTE: Also showing Thermostats as an available sensor to allow for actual temperature values to be used." }
 				input(name: "ecobeesensors", title:"Select Ecobee Sensors (${numFound} found)", type: "enum", required:false, description: "Tap to choose", multiple:true, metadata:[values:options])
 			}
+            if (settings.showThermsAsSensor) { 
+            	section("NOTE: Thermostats are included as an available sensor to allow for actual temperature values to be used.") { }
+            }
 		} else {
     		 // No sensors associated with this set of Thermostats was found
            LOG("sensorsPage(): No sensors found.", 4)
-           section(""){
-           		paragraph "No associated sensors were found. Click Done above."
-           }
+           section("No associated sensors were found. Click Done above ${settings.thermostats?'.':' and select one or more Thermostats.'}") { }
 	    }        
 	}
 }
@@ -330,24 +329,26 @@ def sensorsPage() {
 def askAlexaPage() {
 	dynamicPage(name: "askAlexaPage", title: "Ask Alexa Integration", nextPage: "") {
 
-        section('') {
-        	if (atomicState.askAlexaMQ == null) {
-        		paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
-                		  title: 'Ask Alexa not Detected!', 
-                          		 'Ask Alexa either isn\'t installed, or no Message Queues are defined (sending to the deprecated Primary Message Queue is not supported).\n\n' +
-                				 'Please verify your Ask Alexa settings and then return here to complete the integration.')
-        	} else {
-        		paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
-            			  title: 'Ask Alexa Integration', '')
+		if (atomicState.askAlexaMQ == null) {
+        	section('Ask Alexa either isn\'t installed, or no Message Queues are defined (sending to the deprecated Primary Message Queue is not supported).\n\n' +
+                	'Please verify your Ask Alexa settings and then return here to complete the integration.') {
+            	paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
+                	title: 'Ask Alexa Integration', '')
+            }
+       	} else {
+        	section('Ecobee thermostats can be configured to send Alerts and Reminders, which can automatically be sent to one or more Ask Alexa message queues.' +
+            		'Do you want to enable this feature?') {
+                paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
+                	title: 'Ask Alexa Integration', '')
         		input(name: 'askAlexa', type: 'bool', title: 'Send Ecobee Alerts to Ask Alexa?', required: true, submitOnChange: true, defaultValue: false)
-            	if (settings.askAlexa) {
-            		if (!settings.listOfMQs || (settings.listOfMQs?.size() == 0)) {
-                		paragraph('Please select one or more Ask Alexa Message Queues below (sending to the deprecated Primary Message Queue is not supported):')
-                	}
-                	input(name: 'listOfMQs', type: 'enum', title: 'Send Alerts to these Ask Alexa Message Queues', options: atomicState.askAlexaMQ, submitOnChange: true, 
-                    		multiple: true, required: true)
-                	input(name: 'expire', type: 'number', title: 'Expire Alerts after how many hours (optional)?', submitOnChange: true, required: false, range: "1..*")
-                    // input(name: 'collapseAAA', type: 'bool', title: 'Collapse identical Alerts from multiple thermostats?', defaultValue: false, submitOnChange: true)
+            }
+            if (settings.askAlexa) {
+               	section('Select one or more Ask Alexa Message Queues below:') {
+               		input(name: 'listOfMQs', type: 'enum', title: 'Send Alerts to these Ask Alexa Message Queues', options: atomicState.askAlexaMQ, submitOnChange: true, 
+                   		multiple: true, required: true)
+                }
+                section('Ask Alexa can automatically expire these Ecobee Alerts if they are not acknowledged within a defined time limit.') {
+               		input(name: 'expire', type: 'number', title: 'Expire Alerts after how many hours (optional)?', submitOnChange: true, required: false, range: "1..*")
             	}
         	}
         }
@@ -356,24 +357,37 @@ def askAlexaPage() {
 
 def preferencesPage() {
     LOG("=====> preferencesPage() entered. settings: ${settings}", 5)
-
-    dynamicPage(name: "preferencesPage", title: "Update SmartApp Preferences", nextPage: "") {
-		section("SmartApp Preferences") {
-        	input(name: 'recipients', title: 'Send push notifications to', type: 'contact', required: false, multiple: true)
-        	input(name: "holdType", title:"Select Hold Type", type: "enum", required:false, multiple:false, defaultValue:  "Until I Change", description: "Until I Change", metadata:[values:["Until I Change", "Until Next Program"]])
-            paragraph "The 'Smart Auto Temperature Adjust' feature determines if you want to allow the thermostat setpoint to be changed using the arrow buttons in the Tile when the thermostat is in 'auto' mode."
+    dynamicPage(name: "preferencesPage", title: "Update Ecobee (Connect) Preferences", nextPage: "") {
+		section("Notifications are only sent when the Ecobee API connection is lost and unrecoverable, at most 1 per hour. You can have them sent ${location.contactBookEnabled?'to selected Contacts':'via SMS'} or as a Push notification (default).") {
+            input(name: 'recipients', title: 'Send notifications to', descriptions: 'Contacts', type: 'contact', required: false, multiple: true) {
+            	input "phone", "phone", title: "Send SMS notifications to", description: "Phone Number", required: false }
+        }
+      	section("How long do you want Hold events to last?") {
+            input(name: "holdType", title:"Select Hold Type", type: "enum", required:false, multiple:false, defaultValue:  "Until I Change", description: "Until I Change", metadata:[values:["Until I Change", "Until Next Program"]])
+        }   
+        section("The 'Smart Auto Temperature Adjust' feature determines if you want to allow the thermostat setpoint to be changed using the arrow buttons in the Tile when the thermostat is in 'auto' mode.") {
             input(name: "smartAuto", title:"Use Smart Auto Temperature Adjust?", type: "bool", required:false, defaultValue: false, description: "")
+        }    
+        section("How frequently do you want to poll the Ecobee cloud for changes?") {   
             input(name: "pollingInterval", title:"Polling Interval (in Minutes)", type: "enum", required:false, multiple:false, defaultValue:5, description: "5", options:["1", "2", "3", "5", "10", "15", "30"])
-            input(name: "debugLevel", title:"Debugging Level (higher # for more information)", type: "enum", required:false, multiple:false, defaultValue:3, description: "3", options:["5", "4", "3", "2", "1", "0"])            
-            paragraph "Showing a Thermostat as a separate Sensor is useful if you need to access the actual temperature in the room where the Thermostat is located and not just the (average) temperature displayed on the Thermostat"
+        }
+        section("Showing a Thermostat as a separate Sensor is useful if you need to access the actual temperature in the room where the Thermostat is located and not just the (average) temperature displayed on the Thermostat") {
             input(name: "showThermsAsSensor", title:"Include Thermostats as a separate Ecobee Sensor?", type: "bool", required:false, defaultValue: false, description: "")
-            paragraph "Monitoring external devices can be used to drive polling and the watchdog events. Be warned, however, not to select too many devices or devices that will send too many events as this can cause issues with the connection."
-            input(name: "useWatchdogDevices", title:"Monitor external devices to drive additional polling and watchdog events?", type: "bool", required:false, description: "", defaultValue:false)
-            paragraph "Set the pause between pressing the setpoint arrows and initiating the API calls. The pause needs to be long enough to allow you to click the arrow again for changing by more than one degree."
+        }
+		if (settings.pollingInterval?.toInteger() > 2) {
+			section("Monitoring external devices can be used to drive polling and the watchdog events. Be warned, however, not to select too many devices or devices that will send too many events as this can cause issues with the connection.\nBe sure NOT to select any Ecobee devices!") {
+            	input(name: "useWatchdogDevices", title:"Monitor external devices to drive additional polling and watchdog events?", type: "bool", required:false, description: "", defaultValue:false)
+            }
+        }
+        section("Set the pause between pressing the setpoint arrows and initiating the API calls. The pause needs to be long enough to allow you to click the arrow again for changing by more than one degree.") {
             input(name: "arrowPause", title:"Delay timer value after pressing setpoint arrows", type: "enum", required:false, multiple:false, description: "4", defaultValue:5, options:["1", "2", "3", "4", "5"])
-			paragraph "Set the desired number of decimal places to display for all temperatures (recommended 1 for C, 0 for F)."
+		}
+        section("Select the desired number of decimal places to display for all temperatures (recommended 1 for C, 0 for F).") {
 			String digits = wantMetric() ? "1" : "0"
-			input(name: "tempDecimals", title:"Decimal places to display", type: "enum", required:true, multiple:false, defaultValue:digits, description: digits, options:["0", "1", "2"], submitOnChange: true)
+			input(name: "tempDecimals", title:"Decimal places to display", type: "enum", required:false, multiple:false, defaultValue:digits, description: digits, options:["0", "1", "2"], submitOnChange: true)
+        }
+        section("Select the debug logging level (higher levels send more information to IDE Live Logging). A setting of 2 is recommended for normal operations") {
+            input(name: "debugLevel", title:"Debug Logging Level", type: "enum", required:false, multiple:false, defaultValue:2, description: "2", options:["5", "4", "3", "2", "1", "0"])            
         }
 	}
 }
@@ -381,10 +395,9 @@ def preferencesPage() {
 def addWatchdogDevicesPage() {
 	LOG("Displaying the Watchdog Device Selection page next...", 5, null, "trace")
     dynamicPage(name: "addWatchdogDevicesPage", title: "Select Watchdog Devices", nextPage: "") {
-		section("Polling and Watchdog Devices") {
-        	paragraph ("Select device(s) that you wish to subscribe to in order to create additional polling events and trigger the watchdog timers. " +
+		section("Select device(s) that you wish to subscribe to in order to create additional polling events. " +
             	"Do NOT select too many devices or devices that will cause excess polling. " + 
-                "Ecobee only updates their data every 3 minutes so any polling interval greater than that is unnecessary.")
+                "NOTE: Do NOT select any Ecobee devices managed by this SmartApp, as this can cause excess circular polling.") {
      		input(name: "watchdogMotion", type:"capability.motionSensor", title: "Select Motion Sensor(s)", required:false, multiple:true)
             input(name: "watchdogTemp", type:"capability.temperatureMeasurement", title: "Select Temperature Measurement Device(s)", required:false, multiple:true)
             input(name: "watchdogSwitch", type:"capability.switch", title: "Select Switch(es)", required:false, multiple:true)
@@ -3550,28 +3563,20 @@ private def sendPushAndFeeds(notificationMessage) {
 	LOG("sendPushAndFeeds >> notificationMessage: ${notificationMessage}", 1, null, "warn")
 	LOG("sendPushAndFeeds >> atomicState.timeSendPush: ${atomicState.timeSendPush}", 1, null, "warn")
     
-    def msg = "Your Ecobee thermostat(s) at ${location.name} " + notificationMessage		// for those that have multiple locations, tell them where we are
-    if (atomicState.timeSendPush) {
-        if ( (now() - state.timeSendPush) >= (1000 * 60 * 60 * 1)) { // notification is sent to remind user no more than once per hour
-        	if (location.contactBookEnabled && settings.recipients) {
-				sendNotificationToContacts(msg, settings.recipients, [event: true]) 
-    		} else {
-				sendPush(msg)
-    		}
-            sendActivityFeeds(notificationMessage)
-            atomicState.timeSendPush = now()
-        }
-    } else {
+    // notification is sent to remind user no more than once per hour
+    Boolean sendNotification = (atomicState.timeSendPush && ((now() - atomicState.timeSendPush) < 3600000)) ? false : true
+    if (sendNotification) {
+    	String msg = "Your ${location.name} Ecobee${settings.thermostats.size()>1?'s':''} " + notificationMessage		// for those that have multiple locations, tell them where we are
         if (location.contactBookEnabled && settings.recipients) {
 			sendNotificationToContacts(msg, settings.recipients, [event: true]) 
-    	} else {
+    	} else if (phone) { // check that the user did select a phone number
+    		sendSms(phone, msg)
+        } else {
 			sendPush(msg)
     	}
         sendActivityFeeds(notificationMessage)
         atomicState.timeSendPush = now()
     }
-    // This is done in apiLost now
-    // atomicState.authToken = null
 }
 
 private def sendActivityFeeds(notificationMessage) {
@@ -3760,7 +3765,7 @@ private def apiLost(where = "[where not specified]") {
     }
    
     // provide cleanup steps when API Connection is lost
-	def notificationMessage = "is disconnected from SmartThings/Ecobee, because the access credential changed or was lost. Please go to the Ecobee (Connect) SmartApp and re-enter your account login credentials."
+	def notificationMessage = "${settings.thermostats.size()>1?'are':'is'} disconnected from SmartThings/Ecobee, because the access credential changed or was lost. Please go to the Ecobee (Connect) SmartApp and re-enter your account login credentials."
     atomicState.connected = "lost"
     atomicState.authToken = null
     
@@ -3782,7 +3787,7 @@ private def apiLost(where = "[where not specified]") {
 }
 
 def notifyApiLost() {
-	def notificationMessage = "is disconnected from SmartThings/Ecobee, because the access credential changed or was lost. Please go to the Ecobee (Connect) SmartApp and re-enter your account login credentials."
+	def notificationMessage = "${settings.thermostats.size()>1?'are':'is'} disconnected from SmartThings/Ecobee, because the access credential changed or was lost. Please go to the Ecobee (Connect) SmartApp and re-enter your account login credentials."
     if ( atomicState.connected == "lost" ) {
     	generateEventLocalParams()
 		sendPushAndFeeds(notificationMessage)
