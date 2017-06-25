@@ -46,6 +46,7 @@
  *  1.1.2a - Typo
  *	1.1.3  - Logic correction for Program/Fan/Mode changes
  *	1.1.4  - Grey out current Program buttons also
+ *	1.1.5  - Update heat/cool Setpoints when adjusting temperatures
  *
  */
 
@@ -1309,8 +1310,19 @@ void setHeatingSetpoint(Double setpoint) {
 	def sendHoldType = whatHoldType()
 
 	if (parent.setHold(this, heatingSetpoint,  coolingSetpoint, deviceId, sendHoldType)) {
-		sendEvent(name:"heatingSetpoint", value: wantMetric() ? heatingSetpoint : heatingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
-		sendEvent(name:"coolingSetpoint", value: wantMetric() ? coolingSetpoint : coolingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
+  		Integer precision = device.currentValue('decimalPrecision')
+        def thermostatOperatingState = device.currentValue('thermostatOperatingState')
+        Double heatOffset = 0.0
+        Double coolOffset = 0.0
+        if ((thermostatOperatingState == 'idle') || (thermostatOperatingState == 'fan only')) {
+        	heatOffset = device.currentValue('heatingDifferential').toDouble()
+			coolOffset = device.currentValue('coolingDifferential').toDouble()
+        }
+    	def updates = ['heatingSetpoint':((heatingSetpoint-heatOffset).round(precision))]
+        updates +=    ['coolingSetpoint':((coolingSetpoint+coolOffset).round(precision))]
+        generateEvent(updates)
+		// sendEvent(name:"heatingSetpoint", value: wantMetric() ? heatingSetpoint : heatingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
+		// sendEvent(name:"coolingSetpoint", value: wantMetric() ? coolingSetpoint : coolingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
 		LOG("Done setHeatingSetpoint> coolingSetpoint: ${coolingSetpoint}, heatingSetpoint: ${heatingSetpoint}")
 		generateSetpointEvent()
 		generateStatusEvent()
@@ -1357,8 +1369,19 @@ void setCoolingSetpoint(Double setpoint) {
 
     // Convert temp to F from C if needed
 	if (parent.setHold(this, heatingSetpoint,  coolingSetpoint, deviceId, sendHoldType)) {
-		sendEvent(name:"heatingSetpoint", value: wantMetric() ? heatingSetpoint : heatingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
-		sendEvent(name:"coolingSetpoint", value: wantMetric() ? coolingSetpoint : coolingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
+      	Integer precision = device.currentValue('decimalPrecision')
+        def thermostatOperatingState = device.currentValue('thermostatOperatingState')
+        Double heatOffset = 0.0
+        Double coolOffset = 0.0
+        if ((thermostatOperatingState == 'idle') || (thermostatOperatingState == 'fan only')) {
+        	heatOffset = device.currentValue('heatingDifferential').toDouble()
+			coolOffset = device.currentValue('coolingDifferential').toDouble()
+        }
+    	def updates = ['heatingSetpoint':((heatingSetpoint-heatOffset).round(precision))]
+        updates +=    ['coolingSetpoint':((coolingSetpoint+coolOffset).round(precision))]
+        generateEvent(updates)
+		// sendEvent(name:"heatingSetpoint", value: wantMetric() ? heatingSetpoint : heatingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
+		// sendEvent(name:"coolingSetpoint", value: wantMetric() ? coolingSetpoint : coolingSetpoint.toDouble().round(0).toInteger(), isStateChange: true )
 		LOG("Done setCoolingSetpoint>> coolingSetpoint = ${coolingSetpoint}, heatingSetpoint = ${heatingSetpoint}", 4)
 		generateSetpointEvent()
 		generateStatusEvent()
@@ -1943,8 +1966,8 @@ void lowerSetpoint() {
 		LOG("In mode $mode lowerSetpoint() to $targetvalue", 5, null, "info")
 
 		// Wait 4 seconds before sending in case we hit the buttons again
-	def runWhen = parent.settings?.arrowPause.toInteger() ?: 4		
-	runIn(runWhen, "alterSetpoint", [data: [value:targetvalue], overwrite: true]) //when user click button this runIn will be overwrite
+		def runWhen = parent.settings?.arrowPause.toInteger() ?: 4		
+		runIn(runWhen, "alterSetpoint", [data: [value:targetvalue], overwrite: true]) //when user click button this runIn will be overwrite
 	}
 }
 
@@ -2041,15 +2064,17 @@ void alterSetpoint(temp) {
 	def sendHoldType = whatHoldType()
 	//step2: call parent.setHold to send http request to 3rd party cloud    
 	if (parent.setHold(this, targetHeatingSetpoint, targetCoolingSetpoint, deviceId, sendHoldType)) {
-		sendEvent(name: "thermostatSetpoint", value: temp.value.toString(), displayed: false, isStateChange: true)
-		sendEvent(name: "heatingSetpoint", value: targetHeatingSetpoint, displayed: false, isStateChange: true)
-		sendEvent(name: "coolingSetpoint", value: targetCoolingSetpoint, displayed: false, isStateChange: true)
+    	def updates = ['thermostatSetpoint':temp.value,'heatingSetpoint':targetHeatingSetpoint,'coolingSetpoint':targetCoolingSetpoint]
+        generateEvent(updates)
+		// sendEvent(name: "thermostatSetpoint", value: temp.value.toString(), displayed: false, isStateChange: true)
+		// sendEvent(name: "heatingSetpoint", value: targetHeatingSetpoint, displayed: false, isStateChange: true)
+		// sendEvent(name: "coolingSetpoint", value: targetCoolingSetpoint, displayed: false, isStateChange: true)
 		LOG("alterSetpoint in mode $mode succeed change setpoint to= ${temp.value}", 4)
 	} else {
 		LOG("WARN: alterSetpoint() - setHold failed. Could be an intermittent problem.", 1, null, "error")
         sendEvent(name: "thermostatSetpoint", value: saveThermostatSetpoint.toString(), displayed: false, isStateChange: true)
 	}
-    generateSetpointEvent()
+    // generateSetpointEvent()
 	generateStatusEvent()
     // refresh data
     runIn(5, refresh, [overwrite: true])
