@@ -55,6 +55,10 @@ The intent is to provide an Open Source Licensed ecobee-to-SmartThings implement
 
 The ultimate goal would be to have these capabilities become part of the stock drivers on the "master" branch. But until that time they will be maintained as a fork providing good visibility to any changes upstream.
 
+### Donations
+
+As noted, this work is fully Open Source, and available for use at no charge. However, if you would like to make a donation, you can send it to me at <https://paypal.me/BarryABurke>
+
 ## <a name="quicklinks">Quick Links</a>
 - README.md (this file): <https://github.com/StrykerSKS/SmartThingsPublic/blob/StrykerSKS-Ecobee3/smartapps/smartthings/ecobee-connect.src/README.md>
 - Ecobee (Connect) SmartApp: <https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-connect.src>
