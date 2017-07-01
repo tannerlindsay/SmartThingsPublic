@@ -21,6 +21,7 @@
  *	1.0.5	-	Updated settings & disabled handling
  *	1.0.6	-	Fixed errors in setup for contacts and switches
  *	1.0.7	-	Near total logic rewrite for clarity and optimization PLEASE OPEN/SAVE ALL EXISTING APP INSTANCES!!
+ *  1.0.8   -   Correct typo preventing turning off HVAC in some situations
  *
  */
  
@@ -183,7 +184,7 @@ def statModeChange(evt) {
 def sensorOpened(evt=null) {
 	LOG("sensorOpened() entered with event ${evt?.device} ${evt?.name}: ${evt?.value}", 3,null,'trace')
 	
-    def HVACModeState = atomicState.HVACModeStateState
+    def HVACModeState = atomicState.HVACModeState
     if(HVACModeState == 'off' || state.openedState == 'off_pending') {
     	// HVAC is already off
         return
