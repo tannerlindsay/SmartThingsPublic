@@ -25,7 +25,7 @@
  *
  */
  
-def getVersionNum() { return "1.0.7" }
+def getVersionNum() { return "1.0.8" }
 private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
 
 definition(
