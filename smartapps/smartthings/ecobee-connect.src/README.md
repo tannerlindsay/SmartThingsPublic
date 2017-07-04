@@ -348,10 +348,12 @@ Follow these steps to install the `Ecobee Thermostat`:
 ## <a name="install-smartapp">Install SmartApps in IDE</a>
 Here we will install the following SmartApps:
 - `Ecobee (Connect)`
-- `ecobee Routines` (Child SmartApp)
 - `ecobee Open Contacts` (Child SmartApp)
+- `ecobee Routines` (Child SmartApp)
 - `ecobee Smart Circulation` (Child SmartApp)
 - `ecobee Smart Room` (Child SmartApp)
+- `ecobee Smart Switches` (Child SmartApp)
+- `ecobee Smart Vents` (Child SmartApp)
 - `ecobee Smart Zones` (Child SmartApp)
 
 Follow the steps for _either_ the GitHub Integration or the Manual method below. Do **not** try to do both methods.
@@ -405,7 +407,7 @@ Follow these steps to install the `ecobee Routines` SmartApps:
 - [IDE] Click on the `My SmartApps` tab
 - [IDE] Click `New SmartApp` (top right corner)
 - [IDE] Click `From Code`
-- [GitHub] Go to the respository for the `Ecobee Routines` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-routines.src/ecobee-routines.groovy>
+- [GitHub] Go to the respository for the `ecobee Open Contacts` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-routines.src/ecobee-open-contacts.groovy>
 - [GitHub] Click `Raw`
 - [GitHub] Select all of the text in the window (use Ctrl-A if using Windows)
 - [GitHub] Copy all of the selected text to the Clipboard (use Ctrl-C if using Windows)
@@ -418,9 +420,11 @@ Follow these steps to install the `ecobee Routines` SmartApps:
 - [IDE] Verify that the SmartApp shows up in the list
 
 Repeat the above steps for the rest of the desired Helper SmartApps:
-- `ecobee Open Contacts` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-routines.src/ecobee-open-contacts.groovy>
+- `Ecobee Routines` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-routines.src/ecobee-routines.groovy>
 - `ecobee Smart Circulation` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-circulation.src/ecobee-smart-circulation.groovy>
 - `ecobee Smart Room` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-room.src/ecobee-smart-room.groovy>
+- `ecobee Smart Switches` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-room.src/ecobee-smart-switches.groovy>
+- `ecobee Smart Vents` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-room.src/ecobee-smart-vents.groovy>
 - `ecobee Zones Circulation` SmartApp: <https://github.com/SANdood/SmartThingsPublic/blob/StorageAnarchy-Ecobee/smartapps/smartthings/ecobee-smart-zones.src/ecobee-smart-zones.groovy>
 
 ## <a name="install-smartapp-phone">Install and Run `Ecobee (Connect) `SmartApp on Phone/Tablet</a>
