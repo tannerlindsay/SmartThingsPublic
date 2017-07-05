@@ -47,10 +47,11 @@
  *	1.1.3  - Logic correction for Program/Fan/Mode changes
  *	1.1.4  - Grey out current Program buttons also
  *	1.1.5  - Update heat/cool Setpoints when adjusting temperatures
+ *	1.1.5a - Enable icon display in Things Lists
  *
  */
 
-def getVersionNum() { return "1.1.4" }
+def getVersionNum() { return "1.1.5a" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -253,8 +254,8 @@ metadata {
             state "lost", label: "API ", backgroundColor: "#ffa81e", icon: "st.contact.contact.open"
 		}
 
-		valueTile("temperature", "device.temperature", width: 2, height: 2/*, canChangeIcon: false, icon: "st.Home.home1"*/) {
-			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true)
+		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
+			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
 		}
         
         // these are here just to get the colored icons to diplay in the Recently log in the Mobile App
