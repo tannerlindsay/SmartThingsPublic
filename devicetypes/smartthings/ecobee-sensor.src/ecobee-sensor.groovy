@@ -24,10 +24,11 @@
  *	1.0.7  - Fixed indiscriminate Polling issue
  *  1.0.8  - Setting decimals=0 now also applies to value displayed in device lists
  *	1.0.9  - Uses new Refresh icon
+ *  1.1.0  - Enable icon display in Things lists
  *
  */
 
-def getVersionNum() { return "1.0.9" }
+def getVersionNum() { return "1.1.0" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -97,9 +98,9 @@ metadata {
             }
 		}
         
-		valueTile("temperature", "device.temperature", width: 2, height: 2 /*, canChangeIcon: false, icon: "st.Home.home1"*/) {
+		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
             state("temperature", defaultState: true, label:'${currentValue}°', unit:"dF",
-				backgroundColors: getTempColors()
+				backgroundColors: getTempColors(), icon: "st.Weather.weather2"
 			)
 		}
         
