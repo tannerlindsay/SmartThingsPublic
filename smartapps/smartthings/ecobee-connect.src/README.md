@@ -1,6 +1,6 @@
-Ecobee Thermostat SmartApp(s) and Device Type Handlers
+Free Ecobee Thermostat Suite
 ======================================================
-Now with Ask Alexa Message Queue Integration!
+Latest Version: 1.2.0 Released August 5, 2017
 ---------------------------------------------
 
 >NOTE: This version of Ecobee Thermostat support and integration for SmartThings has been developed as an extension of the amazing contributions originally created by Sean Stryker (StrykerSKS). This README file is an edited/updated version of Sean's, modified to reflect the enhancements AND the GitHub paths/locations for those wanting to use my version. I have NOT yet updated all the screen shots - these currently reflect the UI of Sean's version, and not mine.
@@ -26,10 +26,7 @@ Now with Ask Alexa Message Queue Integration!
 - [Updating](#updating)
 - [Troubleshooting](#troubleshooting)
 - [Reporting Issues](#reporting-issues)
-- [Open Items](#open-items--to-dos)
-- [Contributors](#contributors)
 - [License](#license)
-- [Appendix - SmartThings Capabilities Supported](#smartthings-capabilities-supported)
 
 ## <a name="intro">Introduction</a>
 This document describes the various features related to the Open Source Ecobee (Connect)  SmartApp and the related compoenents. This SmartApp suite and the related Device Handlers are intended to be used with [Ecobee thermostats](http://www.ecobee.com/) with the [SmartThings](https://www.smartthings.com/) platform. 
@@ -45,7 +42,7 @@ The following components are part of the solution:
 - **Ecobee Thermostat Device Handler**: This implements the Device Handler for the Ecobee Thermostat functions and attributes. Now includes indicators for current thermostat Program, buttons that allow adding/removing the zone from specific Programs (Home, Away, Sleep only), and indicators that appear when Smart Room is configured for the room.
 - **Ecobee Sensor Device Handler**: This implements the Device Handler for the Ecobee Sensor attributes. This is also used to expose the internal sensors on the Thermostat to allow the actual temperature values (instead of only the average) to also be available. This is critically important for some applications such as smart vents.
 
-Here are links to the working version of the repository being developed and maintained by Barry A. Burke [(on GitHub)](https://github.com/SANdood) [(on SmartThings Community)](https://community.smartthings.com/users/storageanarchy/).
+Here are links to the working version of the repository being developed and maintained by Barry A. Burke [(on GitHub)](https://github.com/SANdood/SmartThingsPublic/tree/StorageAnarchy-Ecobee) [(on SmartThings Community)](https://community.smartthings.com/t/release-free-ecobee-suite-version-1-2-0/94841).
 
 ## <a name="motivation">Motivation</a>
 
@@ -53,7 +50,9 @@ I maintain the original intent as defined by Sean:
 
 The intent is to provide an Open Source Licensed ecobee-to-SmartThings implementation that can be used by the SmartThings community of users free of charge and without fear of the device disappearing in the future. This will help ensure accessibility for all users and provide for an easy mechanism for the community to help maintain/drive the functionality.
 
-The ultimate goal would be to have these capabilities become part of the stock drivers on the "master" branch. But until that time they will be maintained as a fork providing good visibility to any changes upstream.
+Let me be clear: this is not a competition. I am not trying to replace or outdo any other version, and I personally have nothing against people making money off of their efforts. I have invested my time in this as Open Source so as to meet my own wants and desires, and I offer the result back to the community with no strings attached.
+
+Please feel free to try any version you want, and pick the one that best fits your own use case and preference.
 
 ### Donations
 
@@ -100,16 +99,24 @@ The primary user interface on a day-to-day basis will be two different types of 
     - Displays (Smart Recovery) when heating/cooling in advance of a Program change
     - Displays the setpoint temperature that will initiate a heat/cool demand while idle, and the actual target temp while heating/cooling
     - All temperatures can be configured to display in 0, 1 or 2 decimal positions (with appropriate rounding)
-  - Most icons are now in full color
+  - Most icons are dynamic and in full color
     - New Operating State icons reflect current stage for multi-stage Heat or Cool, plus humidification/dehumidification (if configured)
     - Hold: Program icons are now "filled" so you can recognize the Hold at a glance
-    - Operating State, Current Program, and Motion icons will go blank to indicate "Offline" status should the thermostat lose its connection to the Ecobee Cloud for any reason (e.g. power or network/wifi failure).
+    - Buttons that are inactive due to the current state/mode/program are greyed out
+    - Display-only buttons no longer invoke any actions
   - Dynamic "Resume" button
     - Normally displays as Resume (Program) button, to override a current Hold: event
     - While thermostat is in a Vacation event, the button becomes 'Cancel" to allow the cancelation of the Vacation
   - Hold/Vacation Status display
-    - Display when current Hold or Vacation ends
+    - Displays when current Hold or Vacation ends
     - If the thermostat loses its connection to the Ecobee Cloud, displays the time that the last valid update was recieved
+  - Default Hold handling
+    - In addition to Permanent and Temporary holds, now supports hourly holds: 2 hours, 4 hours or Custom Hours. 
+    - The default hold type can be configured in Ecobee (Connect) or for each individual thermostat in Thermostat Preferences.
+    - Also supports using the thermostat's preference setting (askMe is not currently supported)
+  - New Refresh actions
+    - If pressed once, will only request the latest updates from the Ecobee Cloud
+    - If pressed a second time within a few seconds of the first press completing, will force a full update from the Ecobee Cloud
    
 <b>Sensor UI Feature Enhancements</b>
   -	A new multiAttributeTile replaces the old presentation, with motion displayed at the bottom left corner
@@ -122,6 +129,7 @@ The primary user interface on a day-to-day basis will be two different types of 
   - Messages sent to the Device notification log (found under the Recently tab of a Device) are now optimized, most with associated colored icons 
   - All current Attributes and Capabilities of Thermostat devices are supported
   - Most Ecobee Settings Object variables are are now available as Attributes of a Thermostat (so things like CoRE can see them) 
+  - Supports the latest updated Thermostat Attributes released by SmartThings on July 7, 2017
   - Now offers several new API Command interfaces - see `ecobee-thermostat.groovy` for specifics. These include new API commands to:
     - Add a sensor to a Program
     - Delete/Remove a sensor from a Program
@@ -134,8 +142,8 @@ The primary user interface on a day-to-day basis will be two different types of 
     - Redesigned to do only lightweight polls of the Ecobee Cloud before requesting updates
     - If updates are available, then only requests those updated objects, and only for the thermostats with updates
     - From the updated Ecobee objects, only the data that has changed is sent to the individual devices
-    - As a result of the above, it is possible to run will polling Frequency less than the recommended 3 minutes
-  - Temporary vs. 'Permanent' Hold
+    - As a result of the above, it is possible to run will polling Frequency less than the recommended 3 minutes (as low as 1 minute)
+  - Stacked Holds
     
     Ecobee devices support a concent of "stacked" holds - each hold operation can be stacked on top of a prior hold, such that Resuming the current hold merely "pops the stack" to the prior hold. This is a very difficult concept to manage across multiple interfaces, because it is difficult to depict what the result of a "Resume" operation will be at any given point in time.
     
@@ -177,7 +185,7 @@ The SmartApp provides the following capabilities:
 - Select Sensors to use (dynamic list, will only show sensors associated with the previously selected Thermostats)
 - Access Child SmartApps (such as `ecobee Routines`)
 - Set various Preferences:
-  - Set default Hold Type ("Until Next Program" or "Until I Change")
+  - Set default Hold Type ("Until Next Program", "Until I Change", "2 Hours", "4 Hours", "Specified Hours" and "Thermostat Default")
   - Allow changes to temperature setpoint via arrows when in auto mode ("Smart Auto Temperature Adjust")
   - Polling Interval
   - Debugging Level
@@ -196,13 +204,13 @@ The `ecobee Routines` SmartApp provides the ability to change the running Progra
 
 <b>Features:</b>
 - Change one or multiple thermostats
-- Trigger based on Mode Change or Routine Execution
+- Trigger based on SmartThings Location Mode Change or SmartThings Routine Execution
   - Choose any (including custom) Ecobee Programs to switch to. Or can even choose to Resume Program instead
   - Change the Fan Mode (Optional)
   - Set the Fan Minimum Runtime (Optional)
-  - Also execute at Sunrise or Sunset (Optional)
+  - Disable a Vacation hold (Optional)
 - Trigger based on Program Change on one or more thermostats
-  - Change the Mode or execute a Routine when the thermostat Program Changes - including Vacations!
+  - Change the Location Mode or execute a Routine when the thermostat Program Changes - including Vacations!
 - Temporarily Disable app without having to delete and recreate!
 
 ## <a name="features-opencontact-sa">`Open Contacts` SmartApp</a>
@@ -264,17 +272,15 @@ The `Smart Room' Helper SmartApp will automate a normally unused room, Activatin
   - Optionally notify on Activations via Push, using Contact List or default Push
   - Temporarily Disable app without having to delete and recreate!
     
-## <a name="features-smart-switches-sa">`Smart Switches`</a>
-Documentation coming soon
+## <a name="features-smart-switches-sa">`Smart Switches` SmartApp</a>
+Smart Switches Helper SmartApp enables activating switches or dimmers based upon the Operating State of a thermostat.
 
 ## <a name="features-smart-vents-sa">`Smart Vents` SmartApp</a>
-Documentation coming soon.
+Smart Vents automates one or more vents to reach/maintain a target temperature that you specify or from a specified thermostat. It uses one or more temperature devices, and opens/closes vents based upon current temperature, target temperature and thermostat operating state.
 
 ## <a name="features-smart-zone-sa">`Smart Zones` SmartApp</a>
 Documentation coming soon.
 
-<b>Features:</b>
------------------------------
 # <a name="installation">Installation</a>
 
 ## General
@@ -491,6 +497,8 @@ You should now be running on the updated code. Be sure that you check for both u
 
 To update manually, you will need to "cut & paste" the raw code from GitHub into the SmartThings IDE, Save and Publish the code. I will leave it to the reader to work through the full individual steps, but the links to the code are the same as those that were used during the initial install process.
 
+Note that there are EIGHT SmartApps and TWO Device Handlers in this suite. For proper operation, you will need to copy/paste ALL 10 of these files into your IDE, even if you aren't going to use them all. At a minimum, you should also publish the Ecobee (Connect) SmartApp and the two Device Handlers.
+
 -------------------------
 ## Troubleshooting
 
@@ -527,20 +535,7 @@ The SmartThings IDE also provides helpful insights related to the current state 
 
 -------------------------
 ## <a name="reporting-issues">Reporting Issues</a>
-All issues or feature requests should be submitted via the GitHub issue capability. It can be found on the [Issues](https://github.com/SANdood/SmartThingsPublic/issues) tab within the GitHub repository.
-
-You are also welcome to engage in discussions using the [SmartThings Community](https://community.smartthings.com/).
-
-## <a name="open-items">Open Items / To Dos</a>
-
-Please visit the GitHub page to see any open [Issues](https://github.com/SANdood/SmartThingsPublic/issues).
-
-
-## <a name="contributors">Contributors</a>
-
-The easiest way to track the contributors to the project will be to check the contributors listed on GitHub.
-
-[Readme file edited using prose.io]
+All issues or feature requests should be submitted to the latest release thread on the SmartThings Community. For the major release version 1.2.0, please use this thread: https://community.smartthings.com/t/release-free-ecobee-suite-version-1-2-0/94841
 
 ## <a name="license">License<a/>
 
