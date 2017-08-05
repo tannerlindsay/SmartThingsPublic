@@ -2,6 +2,7 @@
  *  ecobee Routines
  *
  *  Copyright 2015 Sean Kendall Schneyer
+ *	Copyright 2017 Barry A. Burke
  *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
@@ -26,8 +27,11 @@
  * 1.0.5 - Added optional fanMinOnTime setting when changing Ecobee programs (because we can't change fMOT while in Hold:)
  * 1.0.5a- Double check fanMinutes settings is valid
  * 1.0.6 - Minor optimizations and LOGging fixups
+ * 1.0.7 - Allow fanMinutes == 0
+ * 1.0.8 - Allow override/cancellation of Vacation Hold (e.g., came home early)
+ * 1.2.0 - Update to support holdHours and thermostat holdAction
  */
-def getVersionNum() { return "1.0.6" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -102,14 +106,27 @@ def mainPage() {
 				section(title: "Actions") {
                 	if (settings.modeOrRoutine != "Ecobee Program") {
                 		def programs = getEcobeePrograms()
-                   		programs = programs + ["Resume Program"] + ["Cancel Vacation"]
+                   		programs += ["Resume Program"]
                 		LOG("Found the following programs: ${programs}", 4)
                     
+                    	input(name: "cancelVacation", title: "Cancel Vacation hold if active?", type: "bool", required: true, defaultValue: false)
 	               		input(name: "whichProgram", title: "Switch to this Ecobee Program:", type: "enum", required: true, multiple:false, description: "Tap to choose...", options: programs, submitOnChange: true)
-    	       	    	input(name: "fanMode", title: "Select a Fan Mode (optional)", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["On", "Auto", "default"]], submitOnChange: true)
+    	       	    	if (settings.whichProgram != 'Resume Program') input(name: "fanMode", title: "Select a Fan Mode (optional)", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["On", "Auto", /* "Off", */ "default"]], submitOnChange: true)
                         input(name: "fanMinutes", title: "Specify Fan Minimum Minutes per Hour (optional)", type: "number", required: false, multiple: false, description: "Tap to choose...", range:"0..55", submitOnChange: true)
-        	       		if ((settings.whichProgram!="Resume Program")&&(settings.whichProgram!="Cancel Vacation")) input(name: "holdType", title: "Select the Hold Type (optional)", type: "enum", required: false, multiple: false, description: "Tap to choose...", metadata:[values:["Until I Change", "Until Next Program", "default"]], submitOnChange: true)
-            	   		input(name: "useSunriseSunset", title: "Also at Sunrise or Sunset? (optional) ", type: "enum", required: false, multiple: true, description: "Tap to choose...", metadata:[values:["Sunrise", "Sunset"]], submitOnChange: true)                
+        	       		if (settings.whichProgram != "Resume Program") {
+                        	input(name: "holdType", title: "Select the Hold Type (optional)", type: "enum", required: false, 
+                        			multiple: false, description: "Tap to choose...", submitOnChange: true, defaultValue: "Parent Ecobee (Connect) Setting",
+                               		metadata:[values:["Until I Change", "Until Next Program", "2 Hours", "4 Hours", "Specified Hours", "Thermostat Setting", 
+                               							"Parent Ecobee (Connect) Setting"]])
+                        	if (settings.holdType=="Specified Hours") {
+            					input(name: 'holdHours', title:'How many hours (1-48)?', type: 'number', range:"1..48", required: true, description: '2', defaultValue: 2)
+            				} else if (settings.holdType=='Thermostat Setting') {
+            					paragraph("Thermostat Setting at the time of hold request will be applied.")
+            				} else if ((settings.holdType == null) || (settings.holdType == 'Parent Ecobee (Connect) Setting')) {
+                            	paragraph("Ecobee (Connect) Setting at the time of hold request will be applied.")
+                            }
+                        }
+            	   		// input(name: "useSunriseSunset", title: "Also at Sunrise or Sunset? (optional) ", type: "enum", required: false, multiple: true, description: "Tap to choose...", metadata:[values:["Sunrise", "Sunset"]], submitOnChange: true)                
                 	} else {
                     	input(name: "runModeOrRoutine", title: "Change Mode or Execute Routine: ", type: "enum", required: true, multiple: false, description: "Tap to choose...", metadata:[values:["Mode", "Routine"]], submitOnChange: true)
                         if (settings.runModeOrRoutine == "Mode") {
@@ -164,11 +181,11 @@ def initialize() {
     	subscribe(myThermostats, "currentProgram", changeSTHandler)
     }
    
-    if(useSunriseSunset?.size() > 0) {
-		// Setup subscriptions for sunrise and/or sunset as well
-        if( useSunriseSunset.contains("Sunrise") ) subscribe(location, "sunrise", changeProgramHandler)
-        if( useSunriseSunset.contains("Sunset") ) subscribe(location, "sunset", changeProgramHandler)
-    }
+//    if(useSunriseSunset?.size() > 0) {
+//		// Setup subscriptions for sunrise and/or sunset as well
+//        if( useSunriseSunset.contains("Sunrise") ) subscribe(location, "sunrise", changeProgramHandler)
+//        if( useSunriseSunset.contains("Sunset") ) subscribe(location, "sunset", changeProgramHandler)
+//    }
     
 	// Normalize settings data
     normalizeSettings()
@@ -200,48 +217,51 @@ private def normalizeSettings() {
 	if (settings.modeOrRoutine == "Ecobee Program") return		// no normalization required
     
 	// whichProgram
-	state.programParam = ''
+	state.programParam = null
     state.doResumeProgram = false
-    state.doCancelVacation = false
+    state.doCancelVacation = settings.cancelVacation?true:false
 	if (whichProgram != null && whichProgram != "") {
     	if (whichProgram == "Resume Program") {
         	state.doResumeProgram = true
         } else if (whichProgram == 'Cancel Vacation') {
         	state.doCancelVacation = true
+            // state.programParam = null
         } else {        	
     		state.programParam = whichProgram
     	}
 	}
     
     // fanMode
-    state.fanCommand = ''
+    state.fanCommand = null
     if (settings.fanMode && (settings.fanMode != '')) {
     	if (fanMode == 'On') {
         	state.fanCommand = 'fanOn'
         } else if (fanMode == 'Auto') {
         	state.fanCommand = 'fanAuto'
+        } else if (fanMode == 'Off') {
+        	state.fanCommand = 'fanOff'		// to turn off the fan, we need: tstatMode==Off, fanMode==Auto, fanMinOnTime==0
         } else {
-        	state.fanCommand = ''
+        	state.fanCommand = null		// default
         }
     }
     
     // fanMinutes
     state.fanMinutes = null
-    if (settings.fanMinutes && settings.fanMinutes.isNumber()) {
+    if ((settings.fanMinutes != null) && settings.fanMinutes.isNumber()) {
     	state.fanMinutes = settings.fanMinutes.toInteger()
    	}
     
-    // holdType
+    // holdType is now calculated at the time of the hold request
     state.holdTypeParam = null
-    if (holdType != null && holdType != "") {
-    	if (holdType == "Until I Change") {
-        	state.holdTypeParam = "indefinite"
-        } else if (holdType == "Until Next Program") {
-        	state.holdTypeParam = "nextTransition"
-        } else {
-        	state.holdTypeParam = null
-        }
-    }
+//    if (settings.holdType != null && settings.holdType != "") {
+//    	if (holdType == "Until I Change") {
+//        	state.holdTypeParam = "indefinite"
+//        } else if (holdType == "Until Next Program") {
+//        	state.holdTypeParam = "nextTransition"
+//        } else {
+//        	state.holdTypeParam = null
+//        }
+//    }
     
 	if (settings.modeOrRoutine == "Routine") {
     	state.expectedEvent = settings.action
@@ -313,57 +333,187 @@ def changeProgramHandler(evt) {
         if (vacationHold) {
         	if (state.doCancelVacation) {
             	stat.cancelVacation()
-                sendNotificationEvent("I also cancelled the active Vacation hold on ${stat}.")
+                sendNotificationEvent("As requested, I cancelled the active Vacation Hold on ${stat}.")
+                thermostatHold = 'hold'		// Fake it, so that resumeProgram executes below
+                vacationHold = false
+                state.refresh()				// force a poll for changes from the Ecobee cloud
             } else if (state.doResumeProgram) {
             	LOG("Can't Resume Program while in Vacation mode (${stat})",2,null,'warn')
-           		sendNotificationEvent("I was asked to Resume Program on ${stat}, but it is currently in 'Vacation' mode so I ignored the request.")
+           		sendNotificationEvent("I was asked to Resume Program on ${stat}, but it is currently in 'Vacation' Hold so I ignored the request.")
             } else {
         		LOG("Can't change Program while in Vacation mode (${stat})",2,null,'warn')
-           		sendNotificationEvent("I was asked to change ${stat} to ${state.programParam}, but it is currently in 'Vacation' mode so I ignored the request.")
+           		sendNotificationEvent("I was asked to change ${stat} to ${state.programParam}, but it is currently in 'Vacation' Hold so I ignored the request.")
             }
-        } else if (state.doResumeProgram == true) {
-        	LOG("Resuming Program for ${stat}", 4, null, 'trace')
-            if (thermostatHold == 'hold') {
-            	def scheduledProgram = stat.currentValue("scheduledProgram")
-        		stat.resumeProgram(true) // resumeAll to get back to the scheduled program
-				sendNotificationEvent("And I resumed the scheduled ${scheduledProgram} program on ${stat}.")
-            }
-        } else {
-        	LOG("Setting Thermostat Program to programParam: ${state.programParam} and holdType: ${state.holdTypeParam}", 4, null, 'trace')      
-            boolean done = false
-            def currentProgram = stat.currentValue('currentProgram')
-            def currentProgramName = stat.currentValue('currentProgramName')
-            if (currentProgramName == state.programParam) {
-            	if (thermostatHold == '') {
-                	if (state.fanMinutes!=null) stat.setFanMinOnTime(state.fanMinutes)
-                	sendNotificationEvent("And I verified that ${stat} is already in the ${state.programParam} program.")
-                    done = true
-                }
-            } else if (currentProgramName.startsWith('Hold')) {
-                if (stat.currentValue('scheduledProgram') == state.programParam) {
-                    stat.resumeProgram(true)	// resumeAll to get back to the originally scheduled program
-                    if (state.fanMinutes!=null) stat.setFanMinOnTime(state.fanMinutes)
-                    sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}.")
-                    done = true
-                } else { 
-                	stat.resumeProgram(true)
-                    // done = false
-                }
-            } 
-            if (!done) {
-            	if (state.fanMinutes!=null) stat.setFanMinOnTime(state.fanMinutes) // do this before setting the Hold:, becuase you can't change it after the Hold:
-        		stat.setThermostatProgram(state.programParam, state.holdTypeParam)
-				sendNotificationEvent("And I set ${stat} to the ${state.programParam} program${(state.holdTypeParam!='nextTransition') ? ' indefinitely.' : '.'}")
+        }
+        
+        if (!vacationHold) {
+        	// If we get here, we aren't in a Vacation Hold
+        	if (state.doResumeProgram) {
+        		LOG("Resuming Program for ${stat}", 4, null, 'trace')
+            	if (thermostatHold == 'hold') {
+            		def scheduledProgram = stat.currentValue("scheduledProgram")
+        			stat.resumeProgram(true) 												// resumeAll to get back to the scheduled program
+                	if (state.fanMinutes != null) stat.setFanMinOnTime(state.fanMinutes)		// and reset the fanMinOnTime as requested
+					sendNotificationEvent("And I resumed the scheduled ${scheduledProgram} program on ${stat}.")
+            	} else {
+            		// Resume Program requested, but no hold is currently active
+                	sendNotificationEvent("I was asked to Resume Program on ${stat}, but there is no Hold currently active.")
+            	}
+        	} else {
+            	// set the requested program
+        		if (state.programParam != null) {
+        			LOG("Setting Thermostat Program to programParam: ${state.programParam} and holdType: ${state.holdTypeParam}", 4, null, 'trace')      
+        			boolean done = false
+        			// def currentProgram = stat.currentValue('currentProgram')
+        			def currentProgramName = stat.currentValue('currentProgramName')	// cancelProgram() will reset the currentProgramName to the scheduledProgramName
+        			if ((thermostatHold == '') && (currentProgramName == state.programParam)) {
+                    	// not in a hold, currentProgram is the desiredProgram
+                		def fanSet = false
+                		if (state.fanMinutes != null) {
+                    		stat.setFanMinOnTime(state.fanMinutes)			// set fanMinOnTime
+                        	fanSet = true
+                    	}
+               			if (state.fanCommand != null) {
+                    		stat."${state.fanCommand}"()					// set fan on/auto
+                        	fanSet = true
+                    	}
+                		sendNotificationEvent("And I verified that ${stat} is already in the ${state.programParam} program${fanSet?' with the requested fan settings.':'.'}")
+                		done = true
+                    } else if ((thermostatHold == 'hold') || currentProgramName.startsWith('Hold')) { // (In case the Vacation hasn't cleared yet)
+                    	// In a hold
+            			if (stat.currentValue('scheduledProgram') == state.programParam) {
+                        	// the scheduledProgram is the desiredProgram
+                			stat.resumeProgram(true)	// resumeAll to get back to the originally scheduled program
+                			def fanSet = false
+                			if (state.fanMinutes != null) {
+                    			stat.setFanMinOnTime(state.fanMinutes)		// set fanMinOnTime
+                        		fanSet = true
+                    		}
+               				if (state.fanCommand != null) {
+                    			stat."${state.fanCommand}"()				// set fan on/auto
+                        		fanSet = true
+                    		}
+                			sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}${fanSet?' with the requested fan settings.':'.'}")
+                			done = true
+            			} else { 
+                        	// the scheduledProgram is NOT the desiredProgram, so we need to resumeAll, then set the desired program as a Hold: Program
+                			stat.resumeProgram(true)
+                    		// done = false
+                		}
+            		}
+            		if (!done) {
+           				// Looks like we are setting a Hold: 
+                		def fanSet = false
+                		if (state.fanMinutes != null) {
+                   			stat.setFanMinOnTime(state.fanMinutes)		// set fanMinOnTime before setting the Hold:, becuase you can't change it after the Hold:
+                    		fanSet = true
+                		}
+                        def sendHoldType = whatHoldType(stat)
+    					def sendHoldHours = null
+    					if (sendHoldType.isNumber()) {
+    						sendHoldHours = sendHoldType
+    						sendHoldType = 'holdHours'
+						}
+            			stat.setThermostatProgram(state.programParam, sendHoldType, sendHoldHours)
+                		if (state.fanCommand != null) {
+                   			stat."${state.fanCommand}"()				// set fan on/auto AFTER changing the program, because we are overriding the program's setting
+                    		fanSet = true
+                		}
+                        String timeStr = ''
+                        switch (sendHoldType) {
+                        	case 'indefinitely':
+                            	timeStr = ' indefinitely'
+                                break;
+                            case 'nextTransition':
+                            	timeStr = ' until next scheduled program change'
+                                break
+                            case 'holdHours':
+                            	timeStr = " for ${sendHoldHours} hours"
+                                break;
+                        }
+						sendNotificationEvent("And I set ${stat.displayName} to Hold: ${state.programParam}${timeStr}${fanSet?' with the requested fan settings.':'.'}")
+               		}
+            	} // else { assert state.programParam == null; must have been 'Resume Program' or an old 'Cancel Vacation'  }
             }
 		}
-        if (!vacationHold && state.fanCommand != "" && state.fanCommand != null) stat."${state.fanCommand}"()
     }
     return true
 }
 
+// returns the holdType keyword, OR the number of hours to hold
+// precedence: 1. this SmartApp's preferences, 2. Parent settings.holdType, 3. indefinite (must specify to use the thermostat setting)
+def whatHoldType(statDevice) {
+    def theHoldType = settings.holdType
+    def sendHoldType = null
+    def parentHoldType
+    if ((settings.holdType == null) || (settings.holdType == "Parent Ecobee (Connect) Setting")) {
+    	parentHoldType = parent.settings.holdType
+        if (parentHoldType == null) {	// default for Ecobee (Connect) is permanent hold (legacy)
+        	LOG('Using holdType indefinite',2,null,'info')
+        	return 'indefinite'
+        } else if (parentHoldType != 'Thermostat Setting') {
+        	theHoldType = parentHoldType
+        }
+    }
+    
+    switch (theHoldType) {
+      	case 'Until I Change':
+            sendHoldType = 'indefinite'
+            break;   
+        case 'Until Next Program':
+           	sendHoldType = 'nextTransition'
+            break;               
+        case '2 Hours':
+        	sendHoldType = 2
+            break;
+        case '4 Hours':
+        	sendHoldType = 4
+        case 'Specified Hours':
+            if (settings.holdHours && settings.holdHours.isNumber()) {
+            	sendHoldType = settings.holdHours
+            } else if ((parent.settings.holdType == 'Specified Hours') && parent.settings.holdHours && parent.settings.holdHours.isNumber()) {
+            	sendHoldType = parent.settings.holdHours
+            } else if ( parent.settings.holdType == '2 Hours') {
+            	sendHoldType = 2
+            } else if ( parent.settings.holdType == '4 Hours') {
+            	sendHoldType = 4            
+            } else {
+            	sendHoldType = 2
+            }
+            break;
+        case 'Thermostat Setting':
+       		def statHoldType = statDevice.currentValue('statHoldAction')
+            switch(statHoldType) {
+            	case 'useEndTime4hour':
+                	sendHoldType = 4
+                    break;
+                case 'useEndTime2hour':
+                	sendHoldType = 2
+                    break;
+                case 'nextPeriod':
+                case 'nextTransition':
+                	sendHoldType = 'nextTransition'
+                    break;
+                case 'indefinite':
+                case 'askMe':
+                case null :
+                default :
+                	sendHoldType = 'indefinite'
+                    break;
+           }
+    }
+    if (sendHoldType) {
+    	LOG("Using holdType ${sendHoldType.isNumber()?'holdHours ('+sendHoldType.toString()+')':sendHoldType}",2,null,'info')
+        return sendHoldType
+    } else {
+    	LOG("Couldn't determine holdType, returning indefinite",1,null,'error')
+        return 'indefinite'
+    }
+}
+
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
-	message = "${app.label} ${message}"
-	parent.LOG(message, level, null, logType, event, displayEvent)
+	def messageLbl = "${app.label} ${message}"
+	parent.LOG(messageLbl, level, null, logType, event, displayEvent)
     log."${logType}" message
 }
