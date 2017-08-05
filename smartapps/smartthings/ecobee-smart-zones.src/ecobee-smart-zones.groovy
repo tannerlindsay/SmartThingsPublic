@@ -3,7 +3,6 @@
  *
  *  Copyright 2017 Barry A. Burke
  *
- *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
@@ -16,9 +15,10 @@
  *	1.0.0 - Final prep for General Release
  *	1.0.1 - Edits to LOG and setup for consistency
  *	1.0.2 - Updated settings and TempDisable handling
+ *  1.2.0 - Sync version number with new holdHours/holdAction support
  *
  */
-def getVersionNum() { return "1.0.2" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee smartZones Version ${getVersionNum()}" }
 
 definition(
