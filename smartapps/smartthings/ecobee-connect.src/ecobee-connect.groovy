@@ -14,51 +14,29 @@
  *
  *	Ecobee Service Manager
  *
- *	Author: scott
- *	Date: 2013-08-07
- *
- *  Last Modification:
- *      JLH - 01-23-2014 - Update for Correct SmartApp URL Format
- *      JLH - 02-15-2014 - Fuller use of ecobee API
- *      10-28-2015 DVCSMP-604 - accessory sensor, DVCSMP-1174, DVCSMP-1111 - not respond to routines
- *      StrykerSKS - 12-11-2015 - Make it work (better) with the Ecobee 3
- *		BAB - 01-20-2017 - Massive overhaul for efficiency, performance, bug fixes and UI enhancements
+ *	Original Author: scott
+ *	Date: 2013
  *
  *	Updates by Barry A. Burke (storageanarchy@gmail.com)
  *
- *  See Changelog for change history
-
- *	1.0.0 -	 Final preparation for general release
- *	1.0.1 -	 Added "Offline" status when ecobee Cloud loses connection with thermostat (power out, network down, etc.)
- *	1.0.2 -	 Chasing another uninitialized variable issue
- *	1.0.3 -  Updates to thermostat->Ecobee Cloud connection handling
- *	1.0.4 -	 Added Health Check support for Thermostat device
- *	1.0.5 -	 Beginning of support for thermostats in different timeZones than SmartThings hub
- *	1.0.6 -  Fixed zipCode handling when thermostat does not have a postalCode
- *	1.0.7 -  Rework Climates handling for Hold: (Auto)
- *	1.0.8 -  Cleaned up handling of program Hold: events & commands
- *	1.0.9 -  Fixed tstat name reporting with debugLevel 5, typo in hourForcedUpdate state
- *	1.0.10-	 Fixed resumeProgram resetting HVAC mode incorrectly
- *	1.0.11-	 Create vacation template automatically if one doesn't exist (ecobee bug workaround for hold events)
- *	1.0.12-	 Added new Smart Vents Helper SmartApp
- *	1.0.13-	 Improved Health Check reliability
- *	1.0.14-	 Logging optimizations
- *	1.0.15-	 Added new Smart Switch/Dimmer/Vent Helper, updated Open Contacts Helper to also support Switches
- *	1.1.1 -	 Preparations for Ecobee Alerts support and Ask Alexa integrations
- *	1.1.2 -  Split data collection and event generation into 2 threads to support more tstats & more sensors (within the 20ms limit)
- *	1.1.3 -	 Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting
- *	1.1.4 -  Minor scheduling adjustments
- *	1.1.5 -  Minor cleanup for Ask Alexa integration
- *	1.1.6 -  Minor tweaks for updated Thermostat device
- *	1.1.7 -  Beginnings of support for holdHours (latent - not yet enabled)
- *	1.1.8 -	 Added support for greying out current Programs also
- *	1.1.9 -  Fixed notifications, cleaned up preferences UI
- *
+ *  See Github Changelog for complete change history
+ *	1.1.1 -	Preparations for Ecobee Alerts support and Ask Alexa integrations
+ *	1.1.2 - Split data collection and event generation into 2 threads to support more tstats & more sensors (within the 20ms limit)
+ *	1.1.3 -	Now supports Ask Alexa Message Queues for thermostat alerts/reminders, API connectivity & Network connectivity reporting
+ *	1.1.4 - Minor scheduling adjustments
+ *	1.1.5 - Minor cleanup for Ask Alexa integration
+ *	1.1.6 - Minor tweaks for updated Thermostat device
+ *	1.1.7 - Beginnings of support for holdHours (latent - not yet enabled)
+ *	1.1.8 -	Added support for greying out current Programs also
+ *	1.1.9 - Fixed notifications, cleaned up preferences UI
+ *	1.1.10-	Fixed Offline reporting (when thermostat loses connection to Ecobee Cloud)
+ *	1.1.11-	Finished support for Hourly holds and Thermsotat Default holds
+ *	1.2.0 -	Release of holdHours and thermostat holdAction support
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.1.9" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -336,20 +314,27 @@ def askAlexaPage() {
                 	title: 'Ask Alexa Integration', '')
             }
        	} else {
-        	section('Ecobee thermostats can be configured to send Alerts and Reminders, which can automatically be sent to one or more Ask Alexa message queues.' +
-            		'Do you want to enable this feature?') {
+        	section("${app.label} can send Ecobee Alerts and Reminders to one or more Ask Alexa, where Alexa can deliver them as messages and/or notificaitons.") {
                 paragraph(image: 'https://raw.githubusercontent.com/MichaelStruck/SmartThingsPublic/master/smartapps/michaelstruck/ask-alexa.src/AskAlexa@2x.png', 
                 	title: 'Ask Alexa Integration', '')
-        		input(name: 'askAlexa', type: 'bool', title: 'Send Ecobee Alerts to Ask Alexa?', required: true, submitOnChange: true, defaultValue: false)
+        		input(name: 'askAlexa', type: 'bool', title: 'Send Ecobee Alerts & Reminders to Ask Alexa?', required: false, submitOnChange: true, defaultValue: false)
             }
             if (settings.askAlexa) {
-               	section('Select one or more Ask Alexa Message Queues below:') {
-               		input(name: 'listOfMQs', type: 'enum', title: 'Send Alerts to these Ask Alexa Message Queues', options: atomicState.askAlexaMQ, submitOnChange: true, 
+               	section("${app.label} can send Ecobee Alerts and Reminders to one or more Ask Alexa Message Queues.") {
+               		input(name: 'listOfMQs', type: 'enum', title: 'Send to these Ask Alexa Message Queues', description: 'Tap to select', options: atomicState.askAlexaMQ, submitOnChange: true, 
                    		multiple: true, required: true)
                 }
-                section('Ask Alexa can automatically expire these Ecobee Alerts if they are not acknowledged within a defined time limit.') {
-               		input(name: 'expire', type: 'number', title: 'Expire Alerts after how many hours (optional)?', submitOnChange: true, required: false, range: "1..*")
+                section("${app.label} can automatically acknowledge Ecobee Alerts and Reminders when they are deleted from the Ask Alexa Message Queue${(settings.listOfMQs&&(settings.listOfMQs.size()>1))?'s':''}?") {
+                	input(name: 'ackOnDelete', type: 'bool', title: 'Acknowledge on delete?', required: false, submitOnChange: false, defaultValue: false)
+                }
+                section('Ask Alexa can automatically expire Ecobee Alerts and Reminders if they are not acknowledged within a specified time limit.') {
+               		input(name: 'expire', type: 'number', title: 'Automatically expire Alerts & Reminders after how many hours (optional)?', description: 'Tap to set', submitOnChange: true, required: false, range: "0..*", defaultValue: '')
             	}
+                if (settings.expire) {
+                	section("Do you want to automatically acknowledge Ecobee Alerts and Reminders when they are expired from the Ask Alexa Message Queue${(settings.listOfMQs&&(settings.listOfMQs.size()>1))?'s':''}?") {
+                    	input(name: 'ackOnExpire', type: 'bool', title: 'Acknowledge on expiry?', required: false, defaultValue: false)
+                    }
+                } 
         	}
         }
     }
@@ -363,7 +348,13 @@ def preferencesPage() {
             	input "phone", "phone", title: "Send SMS notifications to", description: "Phone Number", required: false }
         }
       	section("How long do you want Hold events to last?") {
-            input(name: "holdType", title:"Select Hold Type", type: "enum", required:false, multiple:false, defaultValue:  "Until I Change", description: "Until I Change", metadata:[values:["Until I Change", "Until Next Program"]])
+            input(name: "holdType", title:"Select Hold Type", type: "enum", required:false, multiple:false, defaultValue: "Until I Change", submitOnChange: true, description: "Until I Change", 
+            	metadata:[values:["Until I Change", "Until Next Program", "2 Hours", "4 Hours", "Specified Hours", "Thermostat Setting"]])
+            if (settings.holdType=="Specified Hours") {
+            	input(name: 'holdHours', title:'How many hours (1-48)?', type: 'number', range:"1..48", required: true, description: '2', defaultValue: 2)
+            } else if (settings.holdType=='Thermostat Setting') {
+            	paragraph("Thermostat setting at time of hold request will be used.")
+            }
         }   
         section("The 'Smart Auto Temperature Adjust' feature determines if you want to allow the thermostat setpoint to be changed using the arrow buttons in the Tile when the thermostat is in 'auto' mode.") {
             input(name: "smartAuto", title:"Use Smart Auto Temperature Adjust?", type: "bool", required:false, defaultValue: false, description: "")
@@ -422,11 +413,14 @@ def debugDashboardPage() {
     	section("Settings Information") {
         	paragraph "debugLevel: ${getDebugLevel()}"
             paragraph "holdType: ${getHoldType()}"
+            if (settings.holdType && settings.holdType.contains('Hour')) paragraph "holdHours: ${getHoldHours()}"
             paragraph "pollingInterval: ${getPollingInterval()}"
             paragraph "showThermsAsSensor: ${settings.showThermsAsSensor} (default=false if null)"
             paragraph "smartAuto: ${settings.smartAuto} (default=false if null)"   
             paragraph "Selected Thermostats: ${settings.thermostats}"
+            paragraph "Selected Sensors: ${settings.ecobeesensors}"
             paragraph "Decimal Precision: ${getTempDecimals()}"
+            if (settings.askAlexa) paragraph 'Ask Alexa support is enabled'
         }
         section("Dump of Debug Variables") {
         	def debugParamList = getDebugDump()
@@ -487,18 +481,15 @@ def helperSmartAppsPage() {
 
 	LOG("SmartApps available are ${getHelperSmartApps()}", 5, null, "info")
 	
-    //getHelperSmartApps() {
  	dynamicPage(name: "helperSmartAppsPage", title: "Helper Smart Apps", install: true, uninstall: false, submitOnChange: true) { 
     	section("Available Helper Smart Apps") {
-		getHelperSmartApps().each { oneApp ->
-			LOG("Processing the app: ${oneApp}", 4, null, "trace")            
-            def allowMultiple = oneApp.multiple.value
-			//section ("${oneApp.appName.value}") {
-            	app(name:"${oneApp.name.value}", appName:"${oneApp.appName.value}", namespace:"${oneApp.namespace.value}", title:"${oneApp.title.value}", multiple: allowMultiple)            
-			//}
+			getHelperSmartApps().each { oneApp ->
+				LOG("Processing the app: ${oneApp}", 4, null, "trace")            
+            	def allowMultiple = oneApp.multiple.value
+	           	app(name:"${oneApp.name.value}", appName:"${oneApp.appName.value}", namespace:"${oneApp.namespace.value}", title:"${oneApp.title.value}", multiple: allowMultiple)
+			}
 		}
 	}
-}
 }
 // End Preference Pages
 
@@ -540,12 +531,72 @@ private String getMQListNames() {
 
 def askAlexaMQHandler(evt) {
 	LOG("askAlexaMQHandler ${evt?.name} ${evt?.value}",4,null,'trace')
+    
+    // Ignore null events
     if (!evt) return
-    switch (evt.value) {
-	    case "refresh":
-		    atomicState.askAlexaMQ = evt.jsonData && evt.jsonData?.queues ? evt.jsonData.queues : []
-        break
+    
+    // Always collect the List of Message Queues when refreshed, even if not currently integrating with Ask Alexa
+    if (evt.value == 'refresh') {
+		atomicState.askAlexaMQ = evt.jsonData && evt.jsonData?.queues ? evt.jsonData.queues : []
+        return
     }
+ 
+ 	if (!settings.askAlexa) return								// Not integrated with Ask Alexa
+	if (!settings.ackOnExpire && !settings.ackOnDelete) return	// Doesn't want these automatically acknowledged
+    
+    // Handle our messages that were deleted or expired (evt.value == 'Ecobee Status.msgID')
+    if (evt.value.startsWith('Ecobee Status.')) {
+    	def askAlexaAlerts = atomicState.askAlexaAlerts				// Get the lists of alerts we have sent to Ask Alexa
+        def askAlexaAppAlerts = atomicState.askAlexaAppAlerts
+    	if (!askAlexaAlerts && !askAlexaAppAlerts) return			// Looks like we haven't any outstanding alerts at the moment
+        
+    	def messageID = evt.value.drop(14)
+       	if (askAlexaAlerts) {
+        	askAlexaAlerts.each { tid ->
+        		if (askAlexaAlerts[tid]?.contains(messageID)) {
+                	def deleteType = (evt.jsonData && evt.jsonData?.deleteType) ? evt.jsonData.deleteType : ''  // deleteType: "delete", "delete all" or "expire"
+                    if (settings.ackOnExpire && (deleteType == 'expire')) {
+                    	// Acknowledge this expired message
+                        log.debug "askAlexaMQHandler(): request to acknowledge expired ${messageID}"
+                        acknowledgeEcobeeAlert( tid.toString(), messageID )
+                    } else if (settings.ackOnDelete && (deleteType.startsWith('delete'))) {
+                    	// Acknowledge this deleted message
+                        log.debug "askAlexaMQHandler(): request to acknowledge deleted ${messageID}"
+                        acknowledgeEcobeeAlert( tid.toString(), messageID )
+                    }
+                	askAlexaAlerts[tid].removeAll{ it == messageID }
+                    if (!askAlexaAlerts[tid]) askAlexaAlerts[tid] = []
+                    atomicState.askAlexaAlerts = askAlexaAlerts
+               	}
+           	}
+       	}
+        // AppAlerts are generated locally, so no need to acknowledge back to Ecobee
+        if (askAlexaAppAlerts) {
+        	askAlexaAppAlerts.each { tid ->
+        		if (askAlexaAppAlerts[tid]?.contains(messageID)) {
+                	askAlexaAppAlerts[tid].removeAll{ it == messageID }
+                    if (!askAlexaAppAlerts[tid]) askAlexaAppAlerts[tid] = []
+                    atomicState.askAlexaAppAlerts = askAlexaAppAlerts
+               	}
+           	}
+       	}
+   	}
+}
+
+def deleteAskAlexaAlert( String type, String msgID ) {
+	LOG("Deleting ${type} Ask Alexa message ID ${msgID}",2,null,'info')
+    sendLocationEvent( name: 'AskAlexaMsgQueueDelete', value: type, unit: msgID, isStateChange: true, data: [ queues: settings.listOfMQs ])
+}
+
+def acknowledgeEcobeeAlert( String deviceId, String ackRef ) {
+    // 					   {"functions":[{"type":"resumeProgram"}],"selection":{"selectionType":"thermostats","selectionMatch":"YYY"}}
+    // def jsonRequestBody = '{"functions":[{"type":"acknowledge"}],"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '","ackRef":"' + ackRef + '","ackType":"accept"}}'
+    
+    // 					   {"functions":[{"type":"resumeProgram","params":{"resumeAll":"'+allStr+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"YYY"}}
+    def jsonRequestBody = '{"functions":[{"type":"acknowledge","params":{"thermostatIdentifier":"' + deviceId + '","ackRef":"' + ackRef + '","ackType":"accept"}}],"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"}}'
+	LOG("acknowledgeEcobeeAlert(${deviceId},${ackRef}): jsonRequestBody = ${jsonRequestBody}", 4, child)
+	result = sendJson(jsonRequestBody)
+    if (result) LOG("Acknowledged Ecobee Alert ${ackRef} for thermostat ${deviceId})",2,null,'info')
 }
 // End of Ask Alexa Helpers
 
@@ -1088,12 +1139,6 @@ def sunriseEvent(evt) {
     } else {
     	atomicState.sunriseTime = evt.value.toInteger()
     }
-    
-//    if(atomicState.timeZone) {
-//    	atomicState.sunriseTime = new Date().format("HHmm", atomicState.timeZone).toInteger()
-//    } else {
-//    	atomicState.sunriseTime = new Date().format("HHmm").toInteger()
-//    }
 	atomicState.getWeather = true	// force updating of the weather icon in the thermostat
     atomicState.forcePoll = true
     scheduleWatchdog(evt, true)    
@@ -1440,7 +1485,7 @@ def generateChildEvent( childDNI, dataMap) {
 	getChildDevice(childDNI)?.generateEvent(dataMap)
 }
 
-// NOTE: This only updated the apiConnected state now - used to resend all the data, but that's pretty much a waste of CPU cycles now.
+// NOTE: This only updated the apiConnected state now - this used to resend all the data, but that's pretty much a waste of CPU cycles now.
 // 		 If the UI needs updating, the refresh now does a forcePoll on the entire device.
 private def generateEventLocalParams() {
 	// Iterate over all the children
@@ -1453,31 +1498,6 @@ private def generateEventLocalParams() {
     settings.thermostats?.each {
     	getChildDevice(it)?.generateEvent(data)
      }
- 
- /*
-	def d = getChildDevices()
-    d?.each() { oneChild ->
-    	LOG("generateEventLocalParams() - Processing data for child: ${oneChild} has ${oneChild.capabilities}", 4, "", 'info')
-        
-    	if( oneChild.hasCapability("Thermostat") ) {
-        	// We found a Thermostat, send local params as events
-            LOG("generateEventLocalParams() - We found a Thermostat!", 4)
-
-            
-            // Update the API connected state for ALL the associated thermostats
-            // Note that we can't modify a Map element in atomicState directly - we have to read to a local variable, modify, then write it back
-            // atomicState.thermostats[oneChild.device.deviceNetworkId]?.data?.apiConnected = apiConnected() 
-            Map tempData = atomicState.thermostats
-            tempData[oneChild.device.deviceNetworkId]?.data?.apiConnected = connected
-            atomicState.thermostats = tempData
-            oneChild.generateEvent(data)
-        } else {
-        	// We must have a remote sensor
-            // LOG("generateEventLocalParams() - Updating sensor data: ${oneChild.device.deviceNetworkId}", 4)
-			// No local params to send            
-        } 
-    }
-    */
 }
 
 // Checks if anything has changed since the last time this routine was called, using lightweight thermostatSummary poll
@@ -1918,7 +1938,7 @@ def sendAlertEvents() {
 	if (debugLevelFour) LOG("Entered sendAlertEvents() ${atomicState.alerts}", 4)
    
     def askAlexaAlerts = atomicState.askAlexaAlerts			// list of alerts we have sent to Ask Alexa
-    if (!askAlexaAlerts) askAlexaAlerts = [:]		// make it a map if it doesn't exist yet
+    if (!askAlexaAlerts) askAlexaAlerts = [:]				// make it a map if it doesn't exist yet
 	def alerts = atomicState.alerts							// the latest alerts from Ecobee (all thermostats, by tid)
     def thermostatsWithNames = atomicState.thermostatsWithNames
     def totalAlexaAlerts = 0		// including any duplicates we send
@@ -1970,7 +1990,7 @@ def sendAlertEvents() {
 						// Now send the message to Ask Alexa
                 		LOG("Sending '${messageID}' to Ask Alexa ${queues?.size()>0?queues:'Primary Message'} queue${settings.listOfMQs?.size()>1?'s':''}: ${translatedMessage}",3,null,'info')
     					sendLocationEvent(name: 'AskAlexaMsgQueue', value: 'Ecobee Status', unit: messageID, isStateChange: true, 
-    						descriptionText: translatedMessage, data: [ queues: settings.listOfMQs, overwrite: true, expires: exSec, suppressTimeDate: true ])
+    						descriptionText: translatedMessage, data: [ queues: settings.listOfMQs, overwrite: true, expires: exSec, suppressTimeDate: true, trackDelete: true ])
                 		totalAlexaAlerts++			// total that we sent to Ask Alexa for all thermostats
                 		allAlerts << messageID		// all the alerts that we found for THIS thermostat
                     	// Create the list of new alerts we sent to Ask Alexa
@@ -2041,11 +2061,6 @@ def sendAlertEvents() {
     }
 //    if ((askAlexaAlerts != [:]) || (newAlexaAlerts != [:])) askAlexaAlerts = askAlexaAlerts + newAlexaAlerts
     atomicState.askAlexaAlerts = askAlexaAlerts
-}
-
-def deleteAskAlexaAlert( String type, String msgID ) {
-	LOG("Deleting ${type} Ask Alexa message ID ${msgID}",2,null,'info')
-    sendLocationEvent( name: 'AskAlexaMsgQueueDelete', value: type, unit: msgID, isStateChange: true, data: [ queues: settings.listOfMQs ])
 }
 
 private String alertTranslation( alertType, notificationType ){
@@ -2476,6 +2491,7 @@ def updateThermostatData() {
             
 		def thermostatHold = ''
         String holdEndsAt = ''
+        // log.debug "connected: ${runtime?.connected}"
         
         def isConnected = runtime?.connected
         if (!isConnected) {
@@ -2512,7 +2528,7 @@ def updateThermostatData() {
                 	String translatedMessage = "Your ${tName} reported a Connectivity Alert: Ecobee Cloud connection lost ${holdEndsAt}. Please check HVAC power, wifi, and network connection."
                 	if (debugLevelFour) LOG("Sending ${translatedMessage} to Ask Alexa",4,null,'trace')
                 	sendLocationEvent(name: "AskAlexaMsgQueue", value: "Ecobee Status", unit: messageID, isStateChange: true, 
-    					descriptionText: translatedMessage, data: [ queues: settings.listOfMQs, overwrite: true, expires: exSec, suppressTimeDate: true ])
+    					descriptionText: translatedMessage, data: [ queues: settings.listOfMQs, overwrite: true, expires: exSec, suppressTimeDate: true, trackDelete: true ])
             		def newAlexaAppAlerts = [:]
             		newAlexaAppAlerts[tid] = [messageID]
             		if (askAlexaAppAlerts != [:]) newAlexaAppAlerts = askAlexaAppAlerts + newAlexaAppAlerts
@@ -2556,19 +2572,13 @@ def updateThermostatData() {
 						currentClimate = (program.climates.find { it.climateRef == tempClimateRef }).name
                			currentClimateName = 'Hold: ' + currentClimate
                 	} else if ((runningEvent.name=='auto')||(runningEvent.name=='hold')) {		// Handle the "auto" climates (includes fan on override, and maybe the Smart Recovery?)
-                    	if ((statMode == "heat") && (runningEvent.fan != schedClimateRef.heatFan)) {
-                       		currentClimateName = 'Hold: Fan'
-                    	} else if ((statMode == 'cool') && (runningEvent.fan != schedClimateRef.coolFan)) {
-                    		currentClimateName = 'Hold: Fan'
-                    	} else {
+                    	if ((runningEvent.isTemperatureAbsolute == false) && (runningEvent.isTemperatureRelative == false)) {
+                        	currentClimateName = 'Hold: Fan'
+                        } else {
                         	currentClimateName = 'Hold: Temp'
-                    	}
+                        }
                         currentClimate = runningEvent.name.capitalize()
-                	} //else if (runningEvent.name == 'hold') {		// just a temperature hold, probably from the keypad
-                		// currentClimateName = 'Hold: ' + (statMode == 'heat' ? tempHeatingSetpoint : (statMode == 'cool' ? tempCoolingSetpoint : '??')) + '°'
-                        //currentClimateName = 'Hold'
-                        //currentClimate = 'Hold'
-                	//}// if we can't tell which hold is in effect, leave currentClimate, currentClimateName and currentClimateId blank/null/empty
+                	}
                     break;
                 case 'vacation':
                		currentClimateName = 'Vacation'
@@ -2601,9 +2611,10 @@ def updateThermostatData() {
         	}
 		}
         if (debugLevelFour) LOG("updateThermostatData() - currentClimateName set = ${currentClimateName}  currentClimateId set = ${currentClimateId}", 4, null, 'info')
-		
+
+        // Note that fanMode == 'auto' might be changedby the Thermostat DTH to 'off' or 'circulate' dependent on  HVACmode and fanMinRunTime
         if (runningEvent) {
-        	currentFanMode = atomicState.circulateFanModeOn ? "circulate" : atomicState.offFanModeOn ? "off" : runningEvent.fan
+        	currentFanMode = runningEvent.fan
         } else {
         	currentFanMode = runtime.desiredFanMode
 		}
@@ -2672,7 +2683,9 @@ def updateThermostatData() {
 			if (equipStatus == 'fan') {
 				equipOpStat = 'fan only'
             	thermOpStat = equipOpStat
-                
+            } else if (equipStatus == 'off') {
+            	thermOpStat = 'idle'
+                equipOpStat = 'off'
 			} else if (isHeating) {					// heating
             	thermOpStat = 'heating'
                 equipOpStat = 'heating'
@@ -2719,7 +2732,7 @@ def updateThermostatData() {
             equipOpStat = 'offline'					// override if Ecobee Cloud has lost connection with the thermostat
             thermOpStat = 'offline'
         }
-        
+
         // Okey dokey - time to queue all this data into the atomicState.thermostats queue
         def changeCloud =  atomicState.changeCloud  ? atomicState.changeCloud  : [:]
 		def changeConfig = atomicState.changeConfig ? atomicState.changeConfig : [:]
@@ -2785,7 +2798,7 @@ def updateThermostatData() {
         }
         
         // Equipment operating status - I *think* this can change with either thermostat or runtime changes
-        if (isConnected && (forcePoll || (lastEquipStatus != equipStatus))) { 
+        if (/* isConnected && */ (forcePoll || (lastEquipStatus != equipStatus) || !isConnected)) { 
             data += [
         		equipmentStatus: 		  equipStatus,
             	thermostatOperatingState: thermOpStat,
@@ -2796,11 +2809,13 @@ def updateThermostatData() {
         }
         
 		// Thermostat configuration settinngs
-        if (isConnected && (forcePoll || thermostatUpdated)) {	// new settings, programs or events
+        if ((isConnected && (forcePoll || thermostatUpdated)) || !isConnected) {	// new settings, programs or events
         	def autoMode = statSettings?.autoHeatCoolFeatureEnabled
+            def statHoldAction = statSettings?.holdAction			// thermsotat's preference setting for holdAction:
+            														// useEndTime4hour, useEndTime2hour, nextPeriod, indefinite, askMe
         	
             // Thermostat configuration stuff that almost never changes - if any one changes, send them all
-        	def neverList = [statMode,autoMode,coolStages,heatStages,/*heatHigh,heatLow,coolHigh,coolLow,*/heatRange,coolRange,climatesList,
+        	def neverList = [statMode,autoMode,statHoldAction,coolStages,heatStages,/*heatHigh,heatLow,coolHigh,coolLow,*/heatRange,coolRange,climatesList,
         						hasHeatPump,hasForcedAir,hasElectric,hasBoiler,auxHeatMode,hasHumidifier,hasDehumidifier,tempHeatDiff,tempCoolDiff] 
  			if (forcePoll || (changeNever == [:]) || !changeNever.containsKey(tid) || (changeNever[tid] != neverList)) { 
                 def heatDiff = String.format("%.${apiPrecision}f", tempHeatDiff.toDouble().round(apiPrecision))
@@ -2812,12 +2827,13 @@ def updateThermostatData() {
             		heatStages: heatStages,
 					autoMode: autoMode,
                 	thermostatMode: statMode,
+                    statHoldAction: statHoldAction,
             		heatRangeHigh: heatHigh,
             		heatRangeLow: heatLow,
             		coolRangeHigh: coolHigh,
             		coolRangeLow: coolLow,
 					heatRange: heatRange,
-					coolRange: coolRange,  
+					coolRange: coolRange,
                 	programsList: climatesList,
                 
                 	hasHeatPump: hasHeatPump,
@@ -2835,6 +2851,18 @@ def updateThermostatData() {
         	}
             
             // Thermostat operational things that rarely change, (a few times a day at most)
+            //
+            // First, we need to clean up Fan Holds
+            if ((thermostatHold != '') && (currentClimateName == 'Hold: Fan')) {
+            	if (currentFanMode == 'on') { currentClimateName = 'Hold: Fan On' }
+                else if (currentFanMode == 'auto') {
+                	if (statMode == 'off') {
+                    	if (fanMinOnTime != 0) {currentClimateName = "Hold: Circulate"}
+                    } else {
+                    	currentClimateName = (fanMinOnTime == 0) ? 'Hold: Auto' : 'Hold: Circulate'
+                    }
+                }
+            }
          	def rarelyList = [fanMinOnTime,isConnected,thermostatHold,holdEndsAt,statusMsg,currentClimateName,currentClimateId,scheduledClimateName,
             					scheduledClimateId,currentFanMode]
 		    if (forcePoll || (changeRarely == [:]) || !changeRarely.containsKey(tid) || (changeRarely[tid] != rarelyList)) { 
@@ -3035,45 +3063,22 @@ private refreshAuthToken(child=null) {
 def resumeProgram(child, String deviceId, resumeAll=true) {
 	LOG("Entered resumeProgram for deviceId: ${deviceId} with child ${child}", 2, child, 'trace')
 	def result = true
+    boolean debugLevelFour = debugLevel(4)
+    boolean debugLevelThree = debugLevel(3)
+    
 	String allStr = resumeAll ? 'true' : 'false'
-    
-    def previousFanMinOnTime = atomicState."previousFanMinOnTime${deviceId}"
-    def currentFanMinOnTime = getFanMinOnTime(child)
-    def previousHVACMode = atomicState."previousHVACMode${deviceId}"
-    def currentHVACMode = getHVACMode(child)
-    // def currentHoldType = child.currentValue("thermostatHold")		// TODO: If we are in a vacation hold, need to delete the vacation
-    // theoretically, if currentHoldType == "", we can skip all of this...theoretically
-    
-    if (debugLevel(3)) LOG("resumeProgram() - atomicState.previousHVACMode = ${previousHVACMode}, currentHVACMode = ${currentHVACMode} atomicState.previousFanMinOnTime = ${previousFanMinOnTime} current (${currentFanMinOnTime})", 3, child, 'info')	
-    if ((previousHVACMode != null) && (currentHVACMode != previousHVACMode)) {
-    	// Need to reset the HVAC Mode back to the previous state
-        if (currentHVACMode == "off") { atomicState.offFanModeOn = false }
-        if (currentHVACMode == "circulate") { atomicState.circulateFanModeOn = false }
+
+    // the following makes no sense because we are about to resumeProgram...which will change all of these current settings
+    //if (debugLevelThree) LOG("resumeProgram() - atomicState.previousHVACMode = ${previousHVACMode}, currentHVACMode = ${currentHVACMode} atomicState.previousFanMinOnTime = ${previousFanMinOnTime} current (${currentFanMinOnTime})", 3, child, 'info')	
+
         
-        //LOG("getHVACMode(child) != atomicState.previousHVACMode${deviceId} (${previousHVACMode})", 5, child, "trace")
-        result = setHVACMode(child, deviceId, previousHVACMode)   
-    }
+    // 					   {"functions":[{"type":"resumeProgram","params":{"resumeAll":"'+allStr+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"YYY"}}
+    def jsonRequestBody = '{"functions":[{"type":"resumeProgram","params":{"resumeAll":"' + allStr + '"}}],"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"}}'
+	if (debugLevelFour) LOG("jsonRequestBody = ${jsonRequestBody}", 4, child)
     
-    if ((previousFanMinOnTime != null) && (currentFanMinOnTime != previousFanMinOnTime)) {
-    	// Need to reset the fanMinOnTime back to the previous settings              
-        
-        LOG("getFanMinOnTime(child) != atomicState.previousFanMinOnTime${deviceId} (${previousFanMinOnTime})", 5, child, "trace")
-        def fanResult = setFanMinOnTime(child, deviceId, previousFanMinOnTime)
-        result = result && fanResult
-    }
-        
-    // 					   {"functions":[{"type":"resumeProgram"}],"selection":{"selectionType":"thermostats","selectionMatch":"YYY"}}
-    def jsonRequestBody = '{"functions":[{"type":"resumeProgram"}],"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '","resumeAll":"' + allStr + '"}}'
-	LOG("jsonRequestBody = ${jsonRequestBody}", 4, child)
-    
-	result = sendJson(jsonRequestBody) && result
-    LOG("resumeProgram(${resumeAll}) returned ${result}", 3, child,'info')
-    if (result) {
-    	// Update the device attributes that it can't see but needs in order to display the proper multiAttributeTile parameters
-        // heatingSetpoint, coolingSetpoint, 
-    }
-    atomicState."previousHVACMode${deviceId}" = null
-    atomicState."previousFanMinOnTime${deviceId}" = null
+	result = sendJson(jsonRequestBody)
+    LOG("resumeProgram(${resumeAll}) returned ${result}", 2, child,'info')
+
     return result
 }
 
@@ -3087,6 +3092,24 @@ def setHVACMode(child, deviceId, mode) {
     LOG("setHVACMode(${mode}) returned ${result}", 3, child,'info')    
 
     return result
+}
+def setMode(child, mode, deviceId) {
+	LOG("setMode(${mode}) for ${deviceId}", 5, child)
+        
+	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"thermostat":{"settings":{"hvacMode":"'+"${mode}"+'"}}}'
+    //                     {"selection":{"selectionType":"thermostats","selectionMatch":"XXX"},             "thermostat":{"settings":{"hvacMode":"cool"}}}    
+	LOG("Mode Request Body = ${jsonRequestBody}", 4, child)
+    
+	def result = sendJson(jsonRequestBody)
+    LOG("setMode to ${mode} with result ${result}", 4, child)
+	if (result) {
+    	LOG("setMode(${mode}) returned ${result}", 4, child, "info")
+    	// child.generateQuickEvent("thermostatMode", mode, 15)
+    } else {
+    	LOG("setMode(${mode}) - Failed", 1, child, "warn")
+    }
+
+	return result
 }
 
 def setFanMinOnTime(child, deviceId, howLong) {
@@ -3183,92 +3206,99 @@ def deleteVacation(child, deviceId, vacationName=null ) {
     def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
 	
     def result = sendJson(child, jsonRequestBody)
-    LOG("deleteVacation() returned ${result}", 4, child,'info') 
-
+    LOG("deleteVacation() returned ${result}", 4, child,'info')
+    
+    if (vacationName == null) {
+    	resumeProgram(child, deviceId, true)		// force back to previously scheduled program
+        pollChildren(deviceId,true) 				// and finally, update the state of everything (hopefully)
+    }
+	
     return result
 }
 
-def setHold(child, heating, cooling, deviceId, sendHoldType=null, fanMode="", extraParams=[]) {
+
+// Should only be called by child devices, and they MUST provide sendHoldType and sendHoldHours as of version 1.2.0
+def setHold(child, heating, cooling, deviceId, sendHoldType='indefinite', sendHoldHours=2) {
+    def currentThermostatHold = child.device.currentValue('thermostatHold') 
+    if (currentThermostatHold == 'vacation') {
+    	LOG("setHold(): Can't set a new hold while in a vacation hold",2,null,'warn')
+    	// can't change fan mode while in vacation hold, so silently fail
+        return false
+    } else if (currentThermostatHold != '') {
+    	LOG("setHold(): Can't set a new hold over existing hold",2,null,'warn')
+        return false
+    }
+
 	int h = (getTemperatureScale() == "C") ? (cToF(heating) * 10) : (heating * 10)
 	int c = (getTemperatureScale() == "C") ? (cToF(cooling) * 10) : (cooling * 10)
     
-	LOG("setHold() - h: ${heating}(${h}), c: ${cooling}(${c}), ${sendHoldType}", 3, child, 'info')
+	LOG("setHold() - h: ${heating}(${h}), c: ${cooling}(${c}), ${sendHoldType}, ${sendHoldHours}", 3, child, 'info')
     
-	if (fanMode != "") { 
-		tstatSettings << [fan:"${fanMode}"] 
-	}
-        
-    if (extraParams != []) {
-    	tstatSettings << extraParams
-    }                
-    def theHoldType = sendHoldType ? sendHoldType : whatHoldType()
-	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":[{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '","holdType":"' + theHoldType + '"}}]}'
-    LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)
+    def theHoldType = sendHoldType // ? sendHoldType : whatHoldType()
+    if (theHoldType == 'holdHours') {
+    	theHoldType = 'holdHours","holdHours":"' + sendHoldHours.toString()
+    }
+	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":[{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + 
+    						'","holdType":"' + theHoldType + '"}}]}'
+   	LOG("setHold() - about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)
     
 	def result = sendJson(child, jsonRequestBody)
     LOG("setHold() returned ${result}", 4, child,'info')
     return result
 }
 
-def setMode(child, mode, deviceId) {
-	LOG("setMode(${mode}) for ${deviceId}", 5, child)
-        
-	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"thermostat":{"settings":{"hvacMode":"'+"${mode}"+'"}}}'
-    //                     {"selection":{"selectionType":"thermostats","selectionMatch":"XXX"},             "thermostat":{"settings":{"hvacMode":"cool"}}}    
-	LOG("Mode Request Body = ${jsonRequestBody}", 4, child)
+// Should only be called by child devices, and they MUST provide sendHoldType and sendHoldHours as of version 1.2.0
+def setFanMode(child, fanMode, fanMinOnTime, deviceId, sendHoldType='indefinite', sendHoldHours=2) {
+	LOG("setFanMode(${fanMode}) for DeviceID: ${deviceId}", 5, child)    
     
-	def result = sendJson(jsonRequestBody)
-    LOG("setMode to ${mode} with result ${result}", 4, child)
-	if (result) {
-    	LOG("setMode(${mode}) returned ${result}", 4, child, "info")
-    	// child.generateQuickEvent("thermostatMode", mode, 15)
-    } else {
-    	LOG("setMode(${mode}) - Failed", 1, child, "warn")
+    def currentThermostatHold = child.device.currentValue('thermostatHold') 
+    if (currentThermostatHold == 'vacation') {
+    	LOG("setFanMode(): Can't change Fan Mode while in a vacation hold",2,null,'warn')
+        return false
+    } else if (currentThermostatHold != '') {
+    	// must resume program first
+        resumeProgram(child, deviceId, true)
     }
 
-	return result
-}
-
-def setFanMode(child, fanMode, deviceId, sendHoldType=null) {
-	LOG("setFanMode(${fanMode}) for DeviceID: ${deviceId}", 5, child)    
-        
-    // These values are ignored anyway when setting the fan
-    def h = child.device.currentValue("heatingSetpoint")
-    def c = child.device.currentValue("coolingSetpoint")
-    
-    def theHoldType = sendHoldType ? sendHoldType : whatHoldType()
-    
     // Per this thread: http://developer.ecobee.com/api/topics/qureies-related-to-setfan
     // def extraParams = [isTemperatureRelative: "false", isTemperatureAbsolute: "false"]
+    // And then these values are ignored when setting only the fan
+    def h = child.device.currentValue('heatingSetpoint')			// use the device's values, not the ones from our last API refresh
+    def c = child.device.currentValue('coolingSetpoint')		// BUT- IF changing Fan Mode while in a Hold, maybe we should be overloading the hold instead of cancelling it?
+    
+    def theHoldType = sendHoldType // ? sendHoldType : whatHoldType(child)
+    if (theHoldType == 'holdHours') {
+    	theHoldType = 'holdHours","holdHours":"' + sendHoldHours.toString()
+    }
+
 	def thermostatSettings = ''
-    def thermostatFunctions = ''     
-    if (fanMode == "circulate") {    	
-    	fanMode = "auto"        
-        LOG("fanMode == 'circulate'", 5, child, "trace")        
-        // Add a minimum circulate time here
-        // TODO: Need to capture the previous fanMinOnTime and return to that value when the mode is changed again?
-        atomicState."previousFanMinOnTime${deviceId}" = getFanMinOnTime(child)
-        atomicState."previousHVACMode${deviceId}" = getHVACMode(child)        
-		atomicState.circulateFanModeOn = true
-        atomicState.offFanModeOn = false
+    def thermostatFunctions = ''
+    
+    // CIRCULATE: same as AUTO, but with a non-zero fanMinOnTime
+    if (fanMode == "circulate") {
+    	LOG("fanMode == 'circulate'", 5, child, "trace") 
+    	fanMode = "auto"
         
-        thermostatSettings = ',"thermostat":{"settings":{"fanMinOnTime":15}}'
-        thermostatFunctions = '{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '","holdType":"' + theHoldType + '","fan":"'+fanMode+'","isTemperatureAbsolute":false,"isTemperatureRelative":false}}'
+        if (fanMinOnTime == null) fanMinOnTime = 20	// default for 'circulate' if not specified
+        thermostatSettings = ',"thermostat":{"settings":{"fanMinOnTime":"' + "${fanMinOnTime}" + '"}}'
+        thermostatFunctions = '{"type":"setHold","params":{"coolHoldTemp":"' + c + '","heatHoldTemp":"' + h + '","holdType":"' + theHoldType + 
+        						'","fan":"'+fanMode+'","isTemperatureAbsolute":false,"isTemperatureRelative":false}}'
+                                
+    // OFF: Sets fanMinOnTime to 0; if thermostatMode == off, this will stop the fan altogether (so long as not in a hold)
     } else if (fanMode == "off") {
     	// How to turn off the fan http://developer.ecobee.com/api/topics/how-to-turn-fan-off
+        // HVACmode=='off', fanMode=='auto' and fanMinOnTime==0
         // NOTE: Once you turn it off it does not automatically come back on if you select resume program
-        atomicState."previousFanMinOnTime${deviceId}" = getFanMinOnTime(child)
-        atomicState."previousHVACMode${deviceId}" = getHVACMode(child)        
-    	atomicState.circulateFanModeOn = false    
-        atomicState.offFanModeOn = true
-        fanMode = "auto"        
-        thermostatSettings = ',"thermostat":{"settings":{"hvacMode":"off","fanMinOnTime":0}}'
+        fanMode = "auto"   
+       	// thermostatSettings = ',"thermostat":{"settings":{"hvacMode":"off","fanMinOnTime":"0"}}'		// now requires thermsotatMode to already be off, instead of overwriting it here
+        thermostatSettings = ',"thermostat":{"settings":{"fanMinOnTime":"0"}}'
         thermostatFunctions = ''
+    // AUTO or ON
     } else {
-		atomicState.circulateFanModeOn = false    
-        atomicState.offFanModeOn = false
-        thermostatSettings = ''
-        thermostatFunctions = '{"type":"setHold","params":{"coolHoldTemp":"'+c+'","heatHoldTemp":"'+h+'","holdType":"'+theHoldType+'","fan":"'+fanMode+'","isTemperatureAbsolute":false,"isTemperatureRelative":false}}'
+        if (fanMinOnTime == null) fanMinOnTime = 0 // this maybe should be the fanTime of the current/scheduledProgram
+        thermostatSettings = ',"thermostat":{"settings":{"fanMinOnTime":"' + "${fanMinOnTime}" + /*'","hvacMode":"' + priorHVACMode + */ '"}}'
+        thermostatFunctions = '{"type":"setHold","params":{"coolHoldTemp":"'+c+'","heatHoldTemp":"'+h+'","holdType":"'+theHoldType+
+        							'","fan":"'+fanMode+'","isTemperatureAbsolute":false,"isTemperatureRelative":false}}'
     }    
 	
 	def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
@@ -3280,11 +3310,21 @@ def setFanMode(child, fanMode, deviceId, sendHoldType=null) {
     return result    
 }
 
-def setProgram(child, program, String deviceId, sendHoldType=null, sendHoldHours=2) {
+def setProgram(child, program, String deviceId, sendHoldType='indefinite', sendHoldHours=2) {
 	// NOTE: Will use only the first program if there are two with the same exact name
 	LOG("setProgram(${program}) for ${deviceId} - child ${child}", 2, child, 'info')    
     // def climateRef = program.toLowerCase()   
-    	
+    
+//    def currentThermostatHold = child.device.currentValue('thermostatHold') 
+//    if (currentThermostatHold == 'vacation') {									// shouldn't happen, child device should have already verified this
+//    	LOG("setProgram(): Can't change Program while in a vacation hold",2,null,'warn')
+//        return false
+//    } else if (currentThermostatHold != '') {									// shouldn't need this either, child device should have done this before calling us
+//    	LOG("setProgram(): Resuming from current hold first",2,null,'warn')
+//        resumeProgram(child, deviceId, true)
+//    }
+   	
+    // We'll take the risk and use the latest received climates data (there is a small chance it could have changed recently but not yet been picked up)
     def climates = atomicState.program[deviceId].climates
     def climate = climates?.find { it.name.toString() == program.toString() }  // vacation holds can have a number as their name
     LOG("climates - {$climates}", 5, child)
@@ -3294,12 +3334,12 @@ def setProgram(child, program, String deviceId, sendHoldType=null, sendHoldHours
 	LOG("setProgram() - climateRef = {$climateRef}", 4, child)
 	
     if (climate == null) { return false }
-    def theHoldType = sendHoldType ? sendHoldType : whatHoldType()
     
-    // Need to add holdHours to 
-    def hours = ''
-    if (theHoldType == 'holdHours') hours = '","holdHours":"'+sendHoldHours.toString()
-	def jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+theHoldType+hours+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
+    def theHoldType = sendHoldType //? sendHoldType : whatHoldType(child)
+    if (theHoldType == 'holdHours') {
+    	theHoldType = 'holdHours","holdHours":"' + sendHoldHours.toString()
+    }
+	def jsonRequestBody = '{"functions":[{"type":"setHold","params":{"holdClimateRef":"'+climateRef+'","holdType":"'+theHoldType+'"}}],"selection":{"selectionType":"thermostats","selectionMatch":"'+deviceId+'"}}'
 
     LOG("about to sendJson with jsonRequestBody (${jsonRequestBody}", 4, child)    
 	def result = sendJson(child, jsonRequestBody)	
@@ -3635,7 +3675,11 @@ private def getMinMinBtwPolls() {
 	return 1
 }
 
-// need these next 4 get routines because settings variable defaults aren't set unless the "Preferences" page is actually opened/rendered
+def toJson(Map m) {
+    return groovy.json.JsonOutput.toJson(m)
+}
+
+// need these next 5 get routines because settings variable defaults aren't set unless the "Preferences" page is actually opened/rendered
 def Integer getPollingInterval() {
     return (settings.pollingInterval?.isNumber() ? settings.pollingInterval.toInteger() : 5)
 }
@@ -3649,7 +3693,16 @@ private Integer getDebugLevel() {
 }
 
 private String getHoldType() {
-	return ( settings.holdType ? settings.holdType : 'Until I Change')
+	return settings.holdType ? settings.holdType : 'Until I Change'
+}
+
+private Integer getHoldHours() {
+	if (settings.holdType) {
+    	if (settings.holdType == 'Specified Hours') return settings.holdHours?.isNumber() ? settings.holdHours.toInteger : 2
+        else if (settings.holdType == '2 Hours') return 2
+        else if (settings.holdType == '4 Hours') return 4
+    	else return 2
+    }
 }
 
 private def String getTimestamp() {
@@ -3836,26 +3889,40 @@ def getAvailablePrograms(thermostat) {
     return climates?.collect { it.name }
 }
 
-private def whatHoldType() {
+/*
+// Deprecated in version 1.20 - holdType MUST be provided by child thermostat making calls to set Holds
+//
+private def whatHoldType(child) {
 	def myHoldType = getHoldType()
-	def sendHoldType = (myHoldType=='Until Next Program' || myHoldType=='Temporary') ? 'nextTransition' : (( myHoldType=='Until I Change' || myHoldType=='Permanent') ? 'indefinite' : 'indefinite')
+    switch (getHoldType()) {
+    	case 'Until I Change':
+        case 'Permanent':
+        	return 'indefinite'
+            break;
+            
+        case 'Until Next Program':
+        case 'Temporary':
+        	return 'nextTransition'
+            break;
+            
+        case '2 Hours':
+        case '4 Hours':
+        case 'Specified Hours':
+        	return 'holdHours'
+            break;
+        
+        case 'Thermostat Setting':
+        default:
+        	return 'indefinite'
+    }
+	// def sendHoldType = (myHoldType=='Until Next Program' || myHoldType=='Temporary') ? 'nextTransition' : (( myHoldType=='Until I Change' || myHoldType=='Permanent') ? 'indefinite' : 'holdHours')
 	// LOG("Entered whatHoldType() with ${sendHoldType}  settings.holdType == ${settings.holdType}")
-    return sendHoldType
+    // return sendHoldType
 }
-
+*/
 private def debugLevel(level=3) {
-	// log.trace("debugLevel() -- settings.debugLevel == ${settings.debugLevel}")
-    // if(settings.debugLevel == "0") { 
-    	// log.trace("debugLevel() - debugLvlNum == 0 triggered")
-    	// return false 
-	//}
-    
-	// def debugLvlNum = getDebugLevel()
-    // def wantedLvl = level?.toInteger()    
-    // log.trace("debugLvlNum = ${debugLvlNum}; wantedLvl = ${wantedLvl}")
     Integer dbgLevel = getDebugLevel()
     return (dbgLevel == 0) ? false : (dbgLevel >= level?.toInteger())
-	// return ( getDebugLevel() >= level?.toInteger() )
 }
 
 private String fixDateTimeString( String dateStr, String timeStr, String thermostatTime) {
