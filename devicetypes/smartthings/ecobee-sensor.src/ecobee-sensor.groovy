@@ -24,11 +24,11 @@
  *	1.0.7  - Fixed indiscriminate Polling issue
  *  1.0.8  - Setting decimals=0 now also applies to value displayed in device lists
  *	1.0.9  - Uses new Refresh icon
- *  1.1.0  - Enable icon display in Things lists
+ *	1.2.0  - Sync revision number with new holdHours/holdAction updates
  *
  */
 
-def getVersionNum() { return "1.1.0" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -86,7 +86,7 @@ metadata {
 	tiles(scale: 2) {
 		multiAttributeTile(name:"temperatureDisplay", type: "generic", width: 6, height: 4){
 			tileAttribute ("device.temperatureDisplay", key: "PRIMARY_CONTROL") {
-				attributeState("temperature", label:'${currentValue}',
+				attributeState("temperature", label:'\n${currentValue}',
 					backgroundColors: getTempColors(), defaultState: true)
 			}
 			tileAttribute ("device.motion", key: "SECONDARY_CONTROL") {
@@ -98,10 +98,14 @@ metadata {
             }
 		}
         
-		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
-            state("temperature", defaultState: true, label:'${currentValue}°', unit:"dF",
-				backgroundColors: getTempColors(), icon: "st.Weather.weather2"
-			)
+//		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: true, decoration: 'flat') {
+//            state("temperature", defaultState: true, label:'${currentValue}°', unit:"dF",
+//				backgroundColors: getTempColors()/* , icon: "st.Weather.weather2"*/
+//			)
+//		}
+        
+        valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: true, decoration: 'flat') {
+			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon:'')// 'st.Weather.weather2')
 		}
         
         standardTile("motion", "device.motion", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
