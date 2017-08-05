@@ -2,7 +2,7 @@
  *  ecobee Open Contacts
  *
  *  Copyright 2016 Sean Kendall Schneyer
- *
+ *	Copyright 2017 Barry A. Burke *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -22,10 +22,11 @@
  *	1.0.6	-	Fixed errors in setup for contacts and switches
  *	1.0.7	-	Near total logic rewrite for clarity and optimization PLEASE OPEN/SAVE ALL EXISTING APP INSTANCES!!
  *  1.0.8   -   Correct typo preventing turning off HVAC in some situations
+ *	1.2.0 	- 	Sync version number with new holdHours/holdAction support
  *
  */
  
-def getVersionNum() { return "1.0.8" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
 
 definition(
