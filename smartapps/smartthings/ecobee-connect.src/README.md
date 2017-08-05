@@ -167,7 +167,7 @@ Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown be
 
 `Ecobee Thermostat` Device |  `Ecobee Thermostat` Device w/ Annotation
 :-------------------------:|:-------------------------:
-<img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/current_thermo_screenshot.jpg" border="1" width="250" /> |  <img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/thermostat_annotation_current.png" width="775" />
+<img src="https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/UISnapshot-v1.2.0.jpg" border="1" width="250" /> |  <img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/thermostat_annotation_current.png" width="775" />
 
 `Ecobee Sensor` Device |  `Ecobee Sensor` Device w/ Annotation
 :-------------------------:|:-------------------------:
