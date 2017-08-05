@@ -2,7 +2,6 @@
  *  ecobee Smart Vents
  *
  *  Copyright 2017 Barry A. Burke
-
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -20,8 +19,11 @@
  *	1.0.5 - Added "Smarter" temp following logic - works better with Smart Recovery
  *	1.0.6 - Fixed setup error
  *	1.0.7 - Added 'smarter' handling of SMart Recovery when following thermostat setpoints
+ *	1.0.8 - Fixed setpoint settings, added current status displays in setup
+ *	1.0.9 - Close the vents if idle while in cool Mode
+ *  1.2.0 - Sync version number with new holdHours/holdAction support
  */
-def getVersionNum() { return "1.0.7" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee Smart Vents Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -44,15 +46,15 @@ preferences {
 // Preferences Pages
 def mainPage() {
 	dynamicPage(name: "mainPage", title: "Configure Smart Vents", uninstall: true, install: true) {
-    	section(title: "Name for Smart Vents Handler") {
-        	label title: "Name this Smart Vents Handler", required: true, defaultValue: "Smart Vents"      
+    	section(title: "Name for Smart Vents Helper") {
+        	label title: "Name this Smart Vents Helper", required: true, defaultValue: "Smart Vents"      
         }
         
         section(title: "Smart Vents: Temperature Sensor(s)") {
         	if (settings.tempDisable) {
-            	paragraph "WARNING: Temporarily Disabled as requested. Turn back on to Enable handler."
+            	paragraph "WARNING: Temporarily Disabled as requested. Turn on below to re-enable this Helper."
             } else {
-            	paragraph("Select temperature sensors for this handler. If you select multiple sensors, the temperature will be averaged across all of them.")
+            	paragraph("Select temperature sensors for this handler. If you select multiple sensors, the temperature will be averaged across all of them.${settings.theSensors?'\n\nCurrent temperature is '+getCurrentTemperature().toString()+'°.':''}")
         		input(name: "theSensors", type:"capability.temperatureMeasurement", title: "Use which temperature Sensor(s)", required: true, multiple: true, submitOnChange: true)
             }
 		}
@@ -68,7 +70,7 @@ def mainPage() {
             	input(name: "theEconetVents", type: "device.econetVent", title: "Control which EcoNet Vent(s)?", required: false, multiple: true, submitOnChange: true)
             	input(name: "theKeenVents", type: "device.keenHomeSmartVent", title: "Control which Keen Home Smart Vent(s)?", required: false, multiple:true, submitOnChange: true)
             	if (settings.theEconetVents || settings.theKeenVents) {
-            		paragraph("Fully closing too many vents at once may be detrimental to your HVAC system. You may want to define a minimum closed percentage")
+            		paragraph("Fully closing too many vents at once may be detrimental to your HVAC system. You may want to define a minimum closed percentage.")
             		input(name: "minimumVentLevel", type: "number", title: "Minimum vent level when closed?", required: true, defaultValue:10, description: '10', range: "0..100")
             	}
         	}
@@ -79,7 +81,10 @@ def mainPage() {
 			}
 		
 			section(title: "Smart Vents: Target Temperature") {
-				input(name: "useThermostat", type: "boolean", title: "Follow thermostat${settings.theThermostat?' '+settings.theThermostat.displayName:''}?", required: true, defaultValue: true, submitOnChange: true)
+            	if (settings.useThermostat && settings.theThermostat) {
+                	paragraph("Current setpoint of ${settings.theThermostat} is ${settings.theThermostat.currentValue('thermostatSetpoint')}°.")
+                }
+				input(name: "useThermostat", type: "bool", title: "Follow setpoints on thermostat${settings.theThermostat?' '+settings.theThermostat.displayName:''}?", required: true, defaultValue: true, submitOnChange: true)
 				if (!settings.useThermostat) {
 					input(name: "heatingSetpoint", type: "number", title: "Target heating setpoint?", required: true)
 					input(name: "coolingSetpoint", type: "number", title: "Target cooling setpoint?", required: true)
@@ -88,7 +93,7 @@ def mainPage() {
         }
         	
 		section(title: "Temporarily Disable?") {
-        	input(name: "tempDisable", title: "Temporarily Disable this Handler? ", type: "bool", description: "", defaultValue: false, submitOnChange: true)                
+        	input(name: "tempDisable", title: "Temporarily Disable this Helper? ", type: "bool", description: "", defaultValue: false, submitOnChange: true)                
         }
         
         section (getVersionLabel())
@@ -146,24 +151,29 @@ private String checkTemperature() {
 	// Be smarter if we are in Smart Recovery mode: follow the thermostat's temperature instead of watching the current setpoint. Otherwise the room won't get the benefits of heat/cool
     // Smart Recovery. Also, we add the heat/cool differential to try and get ahead of the Smart Recovery curve (otherwise we close too early or too often)
     // 
-   	def smarter = theThermostat.currentThermostatOperatingStateDisplay?.contains('smart')
+   	def smarter = theThermostat.currentValue('thermostatOperatingStateDisplay')?.contains('smart')
     
-	def cOpState = theThermostat.currentThermostatOperatingState
+	def cOpState = theThermostat.currentValue('thermostatOperatingState')
     LOG("Current Operating State ${cOpState}",3,null,'info')
 	def cTemp = getCurrentTemperature()
 	def vents = ''			// if not heating/cooling/fan, then no change to current vents
     if (cOpState == 'heating') {
-    	def heatTarget = useThermostat? (smarter? theThermostat.currentTemperature : theThermostat.currentHeatingSetpoint) : heatingSetpoint
-        if (smarter && useThermostat) cTemp = cTemp - theThermostat.currentHeatDifferential
+    	def heatTarget = useThermostat? (smarter? theThermostat.currentTemperature : theThermostat.currentValue('heatingSetpoint')) : settings.heatingSetpoint
+        if (smarter && useThermostat) cTemp = cTemp - theThermostat.currentValue('heatDifferential')
 		vents = (heatTarget <= cTemp) ? 'closed' : 'open'
         LOG("${theThermostat.displayName} is heating, target temperature is ${heatTarget}°, ${smarter?'adjusted ':''}room temperature is ${cTemp}°",3,null,'info')
     } else if (cOpState == 'cooling') {
-    	def coolTarget = useThermostat? (smarter? theThermostat.currentTemperature : theThermostat.currentCoolingSetpoint) : coolingSetpoint
-        if (smarter && useThermostat) cTemp = cTemp + theThermostat.currentCoolDifferential
+    	def coolTarget = useThermostat? (smarter? theThermostat.currentTemperature : theThermostat.currentValue('coolingSetpoint')) : settings.coolingSetpoint
+        if (smarter && useThermostat) cTemp = cTemp + theThermostat.currentValue('coolDifferential')
 		vents = (coolTarget >= cTemp) ? 'closed' : 'open'
         LOG("${theThermostat.displayName} is cooling, target temperature is ${coolTarget}°, ${smarter?'adjusted ':''}room temperature is ${cTemp}°",3,null,'info')
 	} else if (cOpState == 'idle') {
     	LOG("${theThermostat.displayName} is idle, room temperature is ${cTemp}°",3,null,'info')
+        def currentMode = theThermostat.currentValue('thermostatMode')
+        if (currentMode == 'cool') {
+        	def coolTarget = useThermostat ? theThermostat.currentValue('coolingSetpoint') : settings.coolingSetpoint
+            vents = (coolTarget >= cTemp) ? 'closed' : 'open'
+        } 
     } else if (vents == '' && (cOpState == 'fan only')) {
     	vents = 'open'		// if fan only, open the vents
         LOG("${theThermostat.displayName} is running fan only, room temperature is ${cTemp}°",3,null,'info')
@@ -179,10 +189,10 @@ private String checkTemperature() {
 
 def getCurrentTemperature() {
 	Double tTemp = 0.0
-	theSensors.each {
+	settings.theSensors.each {
 		tTemp += it.currentTemperature
 	}
-	if (theSensors.size() > 1) tTemp = tTemp / theSensors.size() // average all the sensors, if more than 1
+	if (settings.theSensors.size() > 1) tTemp = tTemp / settings.theSensors.size() // average all the sensors, if more than 1
 	tTemp = tTemp.round(1)
     return tTemp
 }
