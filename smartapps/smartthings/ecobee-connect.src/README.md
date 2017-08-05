@@ -162,7 +162,7 @@ NOTE: You will not be able to configure Ask Alexa support until you have fully i
 
 - This feature will evolve over the coming months to include more control over what gets sent to Ask Alexa and to support Notifications Only. So stay tuned!
 
-Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below (old versions).
+Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown below (new versions).
 ------------------------------------------------------------------------------------
 
 `Ecobee Thermostat` Device |  `Ecobee Thermostat` Device w/ Annotation
@@ -171,7 +171,7 @@ Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown be
 
 `Ecobee Sensor` Device |  `Ecobee Sensor` Device w/ Annotation
 :-------------------------:|:-------------------------:
-<img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/current_sensor_screenshot.png" border="1" width="250" /> |  <img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/sensor_annotation_current.png" width="400" />
+<img src="https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/UISensor-v1.2.0.png" border="1" width="250" /> | coming soon
 
 ## <a name="features-connect-sa">`Ecobee (Connect)` SmartApp</a>
 The `Ecobee (Connect)` SmartApp provides a single SmartApp interface for accessing installation, updates, Child SmartApps and even debugging tools. The interface uses dynamic pages to guide the user through the installation process in order simplify the steps as much as possible.
