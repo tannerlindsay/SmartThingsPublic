@@ -3,7 +3,6 @@
  *
  *  Copyright 2017 Barry A. Burke
  *
- *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
  *
@@ -28,11 +27,14 @@
  *	1.0.6 - Fixed tempDisable loophole
  *	1.0.6a-	Minor updates
  *  1.0.7 - More minor updates
+ *	1.0.8 - Added execution filter on Thermostat Mode
+ *	1.2.0 - Sync version number with new holdHours/holdAction support
  *
  */
-def getVersionNum() { return "1.0.7" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
+import groovy.json.JsonOutput
 
 definition(
 	name: "ecobee Smart Circulation",
@@ -91,6 +93,7 @@ def mainPage() {
 			section(title: "Enable only for specific modes or programs?") {
         		paragraph("Circulation time (min/hr) is only adjusted while in these modes *OR* programs. The time will remain at the last setting while in other modes. If you want different circulation times for other modes or programs, create multiple Smart Circulation handlers.")
             	input(name: "theModes",type: "mode", title: "Only when the Location Mode is", multiple: true, required: false)
+                input(name:"statModes",type: "enum", title: "Only when the ${settings.theThermostat!=null?settings.theThermostat:'thermostat'}'s Mode is", multiple: true, required: false, options: getThermostatModesList())
             	input(name: "thePrograms", type: "enum", title: "Only when the ${settings.theThermostat!=null?settings.theThermostat:'thermostat'}'s Program is", multiple: true, required: false, options: getProgramsList())
         	}
 		}
@@ -126,6 +129,15 @@ def getProgramsList() {
     return theThermostat ? new JsonSlurper().parseText(theThermostat.currentValue('programsList')) : ["Away","Home","Sleep"]
 }
 
+def getThermostatModesList() {
+	def statModes = ["off","heat","cool","auto","auxHeatOnly"]
+    if (settings.theThermostat) {
+    	def tempModes = theThermostat.currentValue('supportedThermostatModes')
+        if (tempModes) statModes = tempModes.substring(1,tempModes.length()-1).split(', ').collect{it} 
+    }
+    return statModes
+}
+
 def initialize() {
 	LOG("${getVersionLabel()}\nInitializing...", 3, "", 'info')
 	atomicState.amIRunning = false				// reset in case we get stuck (doesn't matter a lot if we run more than 1 instance, just wastes resources)
@@ -153,11 +165,13 @@ def initialize() {
     
 	log.debug "settings ${theModes}, location ${location.mode}, programs ${thePrograms} & ${programsList}, thermostat ${theThermostat.currentValue('currentProgram')}, currentOnTime ${currentOnTime}"
    
-	// Allow adjustments if thermostat OR location is currently as configured
-    // Also allow if neither are configured
+	// Allow adjustments if Location Mode or Thermostat Program or Thermostat Mode is currently as configured
+    // Also allow if none are configured
     boolean isOK = true
-    if (theModes || thePrograms) {
-    	isOK = (theModes && theModes.contains(location.mode)) ? true : ((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgram'))) ? true : false)
+    if (theModes || thePrograms  || statModes) {
+    	isOK = (theModes && theModes.contains(location.mode)) ? true : 
+        			((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgram'))) ? true : 
+                    	((statModes && statModes.contains(theThermostat.currentValue('thermostatMode'))) ? true : false))
     }
     atomicState.isOK = isOK
     
