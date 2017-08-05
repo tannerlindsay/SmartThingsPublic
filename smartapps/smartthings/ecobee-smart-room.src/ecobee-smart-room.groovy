@@ -2,7 +2,6 @@
  *  ecobee Smart Room
  *
  *  Copyright 2017 Barry A. Burke
-
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -21,8 +20,9 @@
  *	1.0.1 - Edit LOG and setup for consistency
  *	1.0.2 - Fixed initialization
  *	1.0.3 - Updated settings and TempDisable handling
+ *	1.2.0 - Sync version number with new holdHours/holdAction support
  */
-def getVersionNum() { return "1.0.3" }
+def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee Smart Room Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
