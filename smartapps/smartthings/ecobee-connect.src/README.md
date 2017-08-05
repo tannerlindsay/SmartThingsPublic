@@ -167,14 +167,11 @@ Screenshots of both the `Ecobee Thermostat` and the `Ecobee Sensor` are shown be
 
 `Ecobee Thermostat` Device |  `Ecobee Thermostat` Device w/ Annotation
 :-------------------------:|:-------------------------:
-<img src="https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/UISnapshot-v1.2.0.jpg" border="1" width="250" /> |  <img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/thermostat_annotation_current.png" width="775" />
+<img src="https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/UISnapshot-v1.2.0.jpg" border="1" width="250" /> | coming soon
 
 `Ecobee Sensor` Device |  `Ecobee Sensor` Device w/ Annotation
 :-------------------------:|:-------------------------:
 <img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/current_sensor_screenshot.png" border="1" width="250" /> |  <img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/sensor_annotation_current.png" width="400" />
-
-Rich set of Ecobee related icons:
-<img src="https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/documentation/ST_ecobee_icons_thumbs.png" border="1" />
 
 ## <a name="features-connect-sa">`Ecobee (Connect)` SmartApp</a>
 The `Ecobee (Connect)` SmartApp provides a single SmartApp interface for accessing installation, updates, Child SmartApps and even debugging tools. The interface uses dynamic pages to guide the user through the installation process in order simplify the steps as much as possible.
