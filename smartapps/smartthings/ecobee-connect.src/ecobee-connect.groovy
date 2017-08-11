@@ -32,11 +32,13 @@
  *	1.1.10-	Fixed Offline reporting (when thermostat loses connection to Ecobee Cloud)
  *	1.1.11-	Finished support for Hourly holds and Thermsotat Default holds
  *	1.2.0 -	Release of holdHours and thermostat holdAction support
+ *	1.2.2 - Fixes for Auto Away/Auto Home
+ *	1.2.3 - Added overcool equipment operating state support
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.3" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -557,11 +559,11 @@ def askAlexaMQHandler(evt) {
                 	def deleteType = (evt.jsonData && evt.jsonData?.deleteType) ? evt.jsonData.deleteType : ''  // deleteType: "delete", "delete all" or "expire"
                     if (settings.ackOnExpire && (deleteType == 'expire')) {
                     	// Acknowledge this expired message
-                        log.debug "askAlexaMQHandler(): request to acknowledge expired ${messageID}"
+                        //log.debug "askAlexaMQHandler(): request to acknowledge expired ${messageID}"
                         acknowledgeEcobeeAlert( tid.toString(), messageID )
                     } else if (settings.ackOnDelete && (deleteType.startsWith('delete'))) {
                     	// Acknowledge this deleted message
-                        log.debug "askAlexaMQHandler(): request to acknowledge deleted ${messageID}"
+                        //log.debug "askAlexaMQHandler(): request to acknowledge deleted ${messageID}"
                         acknowledgeEcobeeAlert( tid.toString(), messageID )
                     }
                 	askAlexaAlerts[tid].removeAll{ it == messageID }
@@ -1467,7 +1469,7 @@ def generateAlertsAndEvents() {
 
 def generateTheEvents() {
 	boolean debugLevelFour = debugLevel(4)
-	def startMS = (debugLevelFour) ? now() : 0
+	def startMS = now()
     def stats = atomicState.thermostats
     def sensors = atomicState.remoteSensorsData
     //log.debug stats
@@ -1477,7 +1479,7 @@ def generateTheEvents() {
     sensors?.each { DNI ->
        	if (DNI.value?.data) getChildDevice(DNI.key)?.generateEvent(DNI.value.data)
     }
-    if (debugLevelFour) LOG("Sent events (${now()-startMS}ms)",2,null,'trace')
+    /*if (debugLevelFour) */ LOG("Sent events (${now()-startMS}ms)",2,null,'trace')
 }
 
 // enables child SmartApps to send events to child Smart Devices using only the DNI
@@ -2589,9 +2591,11 @@ def updateThermostatData() {
                     break;
                 case 'autoAway':
              		currentClimateName = 'Auto Away'
+                    currentClimate = 'away'
                 	break;
                 case 'autoHome':
                		currentClimateName = 'Auto Home'
+                    currentClimate = 'home'
                     break;
             	default:                
                		currentClimateName = runningEvent.type
@@ -2704,15 +2708,15 @@ def updateThermostatData() {
         		thermOpStat = 'cooling'
                 equipOpStat = 'cooling'
                 if (smartRecovery) thermOpStat = 'cooling (smart recovery)'
-                // if (overCool) thermOpStat = 'cooling (overcool)'
+                else if (overCool) thermOpStat = 'cooling (overcool)'
 				if 		(equipStatus.contains('l1')) { equipOpStat = (coolStages == 1) ? 'cooling' : 'cool 1' }
 				else if (equipStatus.contains('l2')) { equipOpStat = 'cool 2' }
                 
-				if (equipStatus.contains('de')/*||overCool*/) { equipOpStat += ' deh' }	// dehumidifying if cool
+				if (equipStatus.contains('de') || overCool) { equipOpStat += ' deh' }	// dehumidifying if cool
                 
 			} else if (equipStatus.contains('de')) { // These can also run independent of heat/cool
         		equipOpStat = 'dehumidifier' 
-                
+              
         	} else if (equipStatus.contains('hu')) { 
         		equipOpStat = 'humidifier' 
         	} // also: economizer, ventilator, compHotWater, auxHotWater
@@ -3312,7 +3316,7 @@ def setFanMode(child, fanMode, fanMinOnTime, deviceId, sendHoldType='indefinite'
 
 def setProgram(child, program, String deviceId, sendHoldType='indefinite', sendHoldHours=2) {
 	// NOTE: Will use only the first program if there are two with the same exact name
-	LOG("setProgram(${program}) for ${deviceId} - child ${child}", 2, child, 'info')    
+	LOG("setProgram(${program}) for ${deviceId} (${child.device?.displayName})", 2, child, 'info')    
     // def climateRef = program.toLowerCase()   
     
 //    def currentThermostatHold = child.device.currentValue('thermostatHold') 
