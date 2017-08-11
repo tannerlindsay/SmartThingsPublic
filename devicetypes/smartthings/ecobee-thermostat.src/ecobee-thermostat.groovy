@@ -39,10 +39,12 @@
  *	1.1.9  - Completed implementation of Hourly holds and Thermostat-default holds
  *	1.2.0  - Release of holdHours and thermostat holdAction support
  *	1.2.1  - Ensure Mode buttons are enabled properly (esp. after vacation hold ends)
- *
+ *	1.2.2  - Handle "Auto Away" same as "Hold: Away" (& Auto Home)
+ *	1.2.3  - Added overcool to operating state display, optimized generateEvent() handling
+ * 
  */
 
-def getVersionNum() { return "1.2.1" }
+def getVersionNum() { return "1.2.3" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -114,8 +116,8 @@ metadata {
         attribute "timeOfDay", "enum", ["day", "night"]
         attribute "lastPoll", "string"
         
-        attribute "supportedThermostatModes", "enum"
-        attribute "supportedThermostatFanModes", "enum"
+        attribute "supportedThermostatModes", "JSON_OBJECT" // enum
+        attribute "supportedThermostatFanModes", "JSON_OBJECT" // enum
         
 		attribute "equipmentStatus", "string"
         attribute "humiditySetpoint", "string"
@@ -197,6 +199,7 @@ metadata {
 				attributeState('cooling', backgroundColor:"#2db9e7")		// ecobee snowflake blue
                 attributeState('heating (smart recovery)', backgroundColor:"#ff9c14")		// ecobee flame orange
                 attributeState('cooling (smart recovery)', backgroundColor:"#2db9e7")		// ecobee snowflake blue
+                attributeState('cooling (overcool)', backgroundColor:"#2db9e7") 
                 attributeState('offline', backgroundColor:"#ff4d4d")
                 attributeState('off', backGroundColor:"#cccccc")			// grey
                 attributeState('default', /* label: 'idle', */ backgroundColor:"#d28de0", defaultState: true) 
@@ -235,6 +238,7 @@ metadata {
 				attributeState("cooling", backgroundColor:"#2db9e7")		// ecobee flame orange
                 attributeState('heating (smart recovery)', backgroundColor:"#ff9c14")		// ecobee flame orange
                 attributeState('cooling (smart recovery)', backgroundColor:"#2db9e7")		// ecobee snowflake blue
+                attributeState('cooling (overcool)', backgroundColor:"#2db9e7") 
                 attributeState('offline', backgroundColor:"#ff4d4d")		// red
                 attributeState('off', backGroundColor:"#cccccc")			// grey
                 attributeState('default', label: 'idle', backgroundColor:"#d28de0", defaultState: true)
@@ -471,6 +475,7 @@ metadata {
 			state "cooling", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/operatingstate_cool.png"
             state "heating (smart recovery)", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/operatingstate_heat.png"
 			state "cooling (smart recovery)", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/operatingstate_cool.png"
+            state 'cooling (overcool)', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/operatingstate_cool.png"
             state "offline", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/black_dot_only.png"
             state "off", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_off_purple.png"
             state "default", label: '${currentValue}', defaultState: true, icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/blank.png"
@@ -731,51 +736,55 @@ def generateEvent(Map results) {
 			switch (name) {
 				case 'heatingSetpoint':
                 	if (isChange) {
-                		// if (device.currentValue('thermostatOperatingState').contains('heat')) {
                         if (tMode == 'heat') {
-                    		sendEvent(name: 'thermostatSetpoint', value: sendValue, displayed: false, isStateChange: true)	// send this event for API compatibility only
+                    		sendEvent(name: 'thermostatSetpoint', value: sendValue, descriptionText: "Thermostat setpoint is ${sendValue}°", displayed: false, isStateChange: true)
                         	objectsUpdated++
                         } else if (tMode == 'auto') {
                         	def avg = ((value.toFloat() + device.currentValue('coolingSetpoint').toFloat()) / 2.0).round(precision.toInteger())
-                            sendEvent(name: 'thermostatSetpoint', value: avg.toString(), displayed: false, isStateChange: true)	// send this event for API compatibility only
+                            sendEvent(name: 'thermostatSetpoint', value: avg.toString(), descriptionText: "Thermostat setpoint is ${avg}°", displayed: true, isStateChange: true)
 							objectsUpdated++
                         }
-                    }    
+                        event = eventFront + [value: sendValue, descriptionText: "Heating setpoint is ${sendValue}°", isStateChange: true, displayed: true]
+                    }
+                    break;
+                    
 				case 'coolingSetpoint':
                 	if (isChange) {
                 		// if (device.currentValue('thermostatOperatingState').contains('cool')) {
                         if (tMode == 'cool') {
-                    		sendEvent(name: 'thermostatSetpoint', value: sendValue, displayed: false, isStateChange: true)	// send this event for API compatibility only
+                    		sendEvent(name: 'thermostatSetpoint', value: sendValue, descriptionText: "Thermostat setpoint is ${sendValue}°", displayed: false, isStateChange: true)
                         	objectsUpdated++
                         } else if (tMode == 'auto') {
                         	def avg = ((value.toFloat() + device.currentValue('heatingSetpoint').toFloat()) / 2.0).round(precision.toInteger())
-                            sendEvent(name: 'thermostatSetpoint', value: avg.toString(), displayed: false, isStateChange: true)	// send this event for API compatibility only
+                            sendEvent(name: 'thermostatSetpoint', value: avg.toString(), descriptionText: "Thermostat setpoint is ${avg}°", displayed: true, isStateChange: true)
 							objectsUpdated++
                         }
-                    }   
+                        event = eventFront + [value: sendValue,  descriptionText: "Cooling setpoint is ${sendValue}°", isStateChange: true, displayed: true]
+                    }
+                    break;
+                    
+                case 'thermostatSetpoint':
+                	if (isChange) event = eventFront + [value: sendValue,  descriptionText: "Thermostat setpoint is ${sendValue}°", isStateChange: true, displayed: true]
+                    break;
+                    
 				case 'weatherTemperature':
+                	if (isChange) event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
+                    break;
+                    
                 case 'temperature':
-                    if (isChange) {
-						if (name=="temperature") {
-                        	if (device.currentValue('thermostatOperatingState') == 'offline') {
-                            	tempDisplay = '451°'		// As in Fahrenheit 451
-                            } else {
-                        		Double dValue = value.toDouble()
-								// Generate the display value that will preserve decimal positions ending in 0
-                    			if (precision == 0) {
-                    				tempDisplay = dValue.round(0).toInteger().toString() + '°'
-                                    sendValue = dValue.round(0).toInteger()
-                    			} else {
-									tempDisplay = String.format( "%.${precision.toInteger()}f", dValue.round(precision.toInteger())) + '°'
-                    			}
-                            
-                            	// Trim the internal precision to 1 decimal digit for F, 2 for C
-                            	// int internalPrec = wantMetric() ? 2 : 1
-                            	// sendValue = String.format( "%.${internalPrec}f", dValue.round(internalPrec))
-                            }
-						} 
-                    	event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
-					}
+                    if (device.currentValue('thermostatOperatingState') == 'offline') {
+                        tempDisplay = '451°'		// As in Fahrenheit 451
+                    } else {
+                        Double dValue = value.toDouble()
+						// Generate the display value that will preserve decimal positions ending in 0
+                    	if (precision == 0) {
+                    		tempDisplay = dValue.round(0).toInteger().toString() + '°'
+                            sendValue = dValue.round(0).toInteger()
+                    	} else {
+							tempDisplay = String.format( "%.${precision.toInteger()}f", dValue.round(precision.toInteger())) + '°'
+                        }
+                    }
+                    if (isChange) event = eventFront + [value: sendValue,  descriptionText: getTemperatureDescriptionText(name, sendValue, linkText), isStateChange: true, displayed: true]
 					break;
 				
 				case 'thermostatOperatingState':
@@ -789,39 +798,29 @@ def generateEvent(Map results) {
                     String realValue
                     if (sendValue.contains('(')) {
                     	displayDesc = true				// only show this update ThermOpStateDisplay if we are in Smart Recovery
-                    	descText = 'in Smart Recovery'	// equipmentOperatingState will show what is actually running
+                    	if (sendValue.contains('mart')) descText = 'in Smart Recovery'	// equipmentOperatingState will show what is actually running
+                        else if (sendValue.contains('ver')) descText = 'Overcooling to dehumidify'
                         realValue = sendValue.take(7)	// this gets us to back to just heating/cooling
                     } else {
                     	displayDesc = false				// hide this message - is redundant with EquipOpState
                         descText = sendValue.capitalize()
                         realValue = sendValue
                     }
-                   	if (true) { // ALWAYS send Display updates as a state change
+                   	if (isStateChange(device, 'thermostatOperatingStateDisplay', sendValue)) {
                     	sendEvent(name: "thermostatOperatingStateDisplay", value: sendValue, descriptionText: "Thermostat is ${descText}", linkText: linkText, 
                     					handlerName: "${name}Display", isStateChange: true, displayed: displayDesc)
-                        if (sendValue == 'offline') sendEvent(name: "temperatureDisplay", value: "451°", isStateChange: true, displayed: false, descriptionText:
+                        objectsUpdated++
+                    }
+                    if (sendValue == 'offline') {
+                    	sendEvent(name: "temperatureDisplay", value: "451°", isStateChange: true, displayed: false, descriptionText:
                         				"Fahrenheit 451")
-                        objectsUpdated += 2
+                        objectsUpdated++
                     }
                     
                     // now update thermostatOperatingState - is limited by API to idle, fan only, heating, cooling, pending heat, pending cool, ventilator only
-                    isChange = isStateChange(device, name, realValue)
-					if (true) event = eventFront + [value: realValue, descriptionText: "Thermostat is ${realValue}", isStateChange: true, displayed: false]
-                    
-                    // update the thermostat setpoint (most necessary for auto mode, when we could be pinging back and forth)
-                    //if (realValue.contains('heat')) {
-                    //	def tstatSetpoint = device.currentValue('heatingSetpoint')
-                    //	if (isStateChange(device, 'thermostatSetpoint', tstatSetpoint.toString())) {
-                    //		sendEvent(name: 'thermostatSetpoint', value: tstatSetpoint, isStateChange: true, displayed: false)
-                    //    	objectsUpdated++
-                    //    }
-                    //} else if (realValue.contains('cool')) {
-                    //	def tstatSetpoint = device.currentValue('coolingSetpoint')
-                    //    if (isStateChange(device, 'thermostatSetpoint', tstatSetpoint.toString())) {
-                    //		sendEvent(name: 'thermostatSetpoint', value: tstatSetpoint, isStateChange: true, displayed: false)
-                    //    	objectsUpdated++
-                    //    }
-                    //}
+					if (isStateChange(device, name, realValue)) {
+                    	event = eventFront + [value: realValue, descriptionText: "Thermostat is ${realValue}", isStateChange: true, displayed: false]
+                    }
                 	break;
 				
 				case 'equipmentOperatingState':
@@ -852,10 +851,12 @@ def generateEvent(Map results) {
 					break;
 				
 				case 'humidity':
-                	def humSetpoint = device.currentValue('humiditySetpoint') 
-                    if (humSetpoint == null) humSetpoint = 0
-                    String setpointText = (humSetpoint == 0) ? '' : " (setpoint: ${humSetpoint}%)"
-					if (isChange) event = eventFront + [value: sendValue, descriptionText: "Humidity is ${sendValue}%${setpointText}", isStateChange: true, displayed: true]
+                	if (isChange) {
+                		def humSetpoint = device.currentValue('humiditySetpoint') 
+                    	// if (humSetpoint == null) humSetpoint = 0
+                    	String setpointText = ((humSetpoint == null) || (humSetpoint == 0)) ? '' : " (setpoint: ${humSetpoint}%)"
+                        event = eventFront + [value: sendValue, descriptionText: "Humidity is ${sendValue}%${setpointText}", isStateChange: true, displayed: true]
+                    }
             		break;
 				
 				case 'humiditySetpoint':
@@ -881,7 +882,7 @@ def generateEvent(Map results) {
                     	def currentProgram = device.currentValue('currentProgramName')
                     	if (currentProgram == 'Offline') enableAllButtons() // not offline any more
                     	progText = 'Program is '+sendValue.trim().replaceAll(':','')
-                        def buttonValue = sendValue.startsWith('Hold') ? 'resume' : 'resume dis'
+                        def buttonValue = (sendValue.startsWith('Hold') || sendValue.startsWith('Auto ')) ? 'resume' : 'resume dis'
                         sendEvent(name: 'resumeProgram', value: buttonValue, displayed: false, isStateChange: true)	// change the button to Resume Program
                         if (currentProgram.contains('acation')) updateModeButtons() 	// turn the mode buttons back on if we just exited a Vacation Hold
                     }
@@ -977,56 +978,57 @@ def generateEvent(Map results) {
 				case 'thermostatMode':
 					if (isChange) {			
                     	event = eventFront + [value: sendValue, descriptionText: "Thermostat Mode is ${sendValue}", data:[supportedThermostatModes: supportedThermostatModes], isStateChange: true, displayed: true]
-                    }
-                    // always update the thermostat mode buttons, to ensure they stay in sync
-                    switch (sendValue) {
-                       	case 'off':
-                           	sendEvent(name: 'thermostatOperatingState', value: 'idle', displayed: true, isStateChange: true, descriptionText: 'Thermostat is idle')
-                            sendEvent(name: 'thermostatOperatingStateDisplay', value: 'off', displayed: false, isStateChange: true)
-                            def currentFanMode = device.currentValue('thermostatFanMode')
-                            if ((currentFanMode != 'off') && (currentFanMode != 'on')) { // auto or circulate
-                                if (device.currentValue('fanMinOnTime') == 0) {
-                                    sendEvent(name: 'thermostatFanModeDisplay', value: 'off dis', displayed: false, isStateChange: true)
+
+                    	switch (sendValue) {
+                       		case 'off':
+                           		sendEvent(name: 'thermostatOperatingState', value: 'idle', displayed: true, isStateChange: true, descriptionText: 'Thermostat is idle')
+                            	sendEvent(name: 'thermostatOperatingStateDisplay', value: 'off', displayed: false, isStateChange: true)
+                            	def currentFanMode = device.currentValue('thermostatFanMode')
+                            	if ((currentFanMode != 'off') && (currentFanMode != 'on')) { // auto or circulate
+                                	if (device.currentValue('fanMinOnTime') == 0) {
+                                    	sendEvent(name: 'thermostatFanModeDisplay', value: 'off dis', displayed: false, isStateChange: true)
+                                		disableFanOffButton()
+                                	} else {
+                                    	sendEvent(name: 'thermostatFanModeDisplay', value: 'circulate dis', displayed: false, isStateChange: true)
+                                    	enableFanOffButton()
+                                	}
+                            	} else {
                                 	disableFanOffButton()
-                                } else {
-                                    sendEvent(name: 'thermostatFanModeDisplay', value: 'circulate dis', displayed: false, isStateChange: true)
-                                    endableFanOffButton()
-                                }
-                            } else {
-                                disableFanOffButton()
-                            }
-                            disableModeOffButton()
-                            objectsUpdated += 2
-                            break;
-                        case 'auto':
-                            def avg = ((device.currentValue('heatingSetpoint').toFloat() + device.currentValue('coolingSetpoint').toFloat()) / 2.0).round(precision.toInteger())
-                            sendEvent(name: 'thermostatSetpoint', value: avg.toString(), displayed: false, isStateChange: true)	// send this event for API compatibility only
-                            //sendEvent(name: 'thermostatOperatingStateDisplay', value: 'idle', displayed: false, isStateChange: true) 
-                            disableModeAutoButton()
-                            disableFanOffButton()
-                            objectsUpdated++
-                            break;
-                        case 'heat':
-                            sendEvent(name: 'thermostatSetpoint', value: device.currentValue('heatingSetpoint'), displayed: false, isStateChange: true)	// send this event for API compatibility only
-                            //sendEvent(name: 'thermostatOperatingStateDisplay', value: 'idle', displayed: false, isStateChange: true)
-                            disableModeHeatButton()
-                            disableFanOffButton()
-                            objectsUpdated++
-                            break;
-                        case 'cool':
-                            sendEvent(name: 'thermostatSetpoint', value: device.currentValue('coolingSetpoint'), displayed: false, isStateChange: true)	// send this event for API compatibility only
-                            //sendEvent(name: 'thermostatOperatingStateDisplay', value: 'idle', displayed: false, isStateChange: true)
-                            disableModeCoolButton()
-                            disableFanOffButton()
-                            objectsUpdated++
-                            break;
-                        case 'auxHeatOnly':
-                            //sendEvent(name: 'thermostatOperatingStateDisplay', value: 'emergency', displayed: false, isStateChange: true)
-                            //sendEvent(name: 'thermostatOperatingStateDisplay', value: 'idle', displayed: false, isStateChange: true)
-                            enableAllModeButtons()
-                            disableFanOffButton()
-                            objectsUpdated++
-                            break;
+                            	}
+                           		disableModeOffButton()
+                            	objectsUpdated += 2
+                            	break;
+                                
+                        	case 'auto':
+                            	String avg = ((device.currentValue('heatingSetpoint').toFloat() + device.currentValue('coolingSetpoint').toFloat()) / 2.0).round(precision.toInteger()).toString()
+                            	if (isStateChange(device, 'thermostatSetpoint', avg)) sendEvent(name: 'thermostatSetpoint', value: avg, descriptionText: "Thermostat setpoint is ${avg}°", displayed: true)
+                            	disableModeAutoButton()
+                            	disableFanOffButton()
+                            	objectsUpdated++
+                            	break;
+                                
+                        	case 'heat':
+                        		def statSetpoint = device.currentValue('heatingSetpoint').toString()
+                            	if (isStateChange(device, 'thermostatSetpoint', statSetpoint)) sendEvent(name: 'thermostatSetpoint', value: statSetpoint, descriptionText: "Thermostat setpoint is ${statSetpoint}°", displayed: true)
+                            	disableModeHeatButton()
+                            	disableFanOffButton()
+                            	objectsUpdated++
+                            	break;
+                                
+                        	case 'cool':
+								def statSetpoint = device.currentValue('coolingSetpoint').toString()
+                            	if (isStateChange(device, 'thermostatSetpoint', statSetpoint)) sendEvent(name: 'thermostatSetpoint', value: statSetpoint, descriptionText: "Thermostat setpoint is ${statSetpoint}°", displayed: true)
+                            	disableModeCoolButton()
+                            	disableFanOffButton()
+                            	objectsUpdated++
+                            	break;
+                                
+                        	case 'auxHeatOnly':
+                            	enableAllModeButtons()
+                            	disableFanOffButton()
+                            	objectsUpdated++
+                            	break;
+                    	}
                     }
 		            break;
 				
@@ -1034,40 +1036,40 @@ def generateEvent(Map results) {
                     if (isChange){
                     	event = eventFront + [value: sendValue, descriptionText: "Fan Mode is ${sendValue}", data:[supportedThermostatFanModes: fanModes()], isStateChange: true, displayed: true]
                         sendEvent(name: "supportedThermostatFanModes", value: fanModes(), displayed: false)
-                    }
-                    // always force update of Display icons
-                    if (device.currentValue('thermostatHold') != 'vacation') {
-                    	switch(sendValue) {
-                            case 'off':
-                        		// Assume (for now) that thermostatMode is also 'off' - this should be enforced by setThermostatFanMode() (who is also only one  who will send us 'off')
-                        		sendEvent(name: 'thermostatFanModeDisplay', value: "off dis", isStateChange: true, displayed: false) // have to force it to update for some reason
-                        		disableFanOffButton()
-                                break;
+
+                    	if (device.currentValue('thermostatHold') != 'vacation') {
+                    		switch(sendValue) {
+                            	case 'off':
+                        			// Assume (for now) that thermostatMode is also 'off' - this should be enforced by setThermostatFanMode() (who is also only one  who will send us 'off')
+                        			sendEvent(name: 'thermostatFanModeDisplay', value: "off dis", isStateChange: true, displayed: false) // have to force it to update for some reason
+                        			disableFanOffButton()
+                                	break;
                                 
-                        	case 'auto':
-                            case 'circulate':
-                        		if (device.currentValue('thermostatMode') == 'off') {
-                            		if (device.currentValue('fanMinOnTime') != 0) {	
-                                		sendValue = 'circulate dis'
-                                		enableFanOffButton() 
-                                	} else {
-                                		sendValue = 'off dis'		// display 'off' when Fan Mode == 'auto' && Thermostat Mode == 'off'
-                                		disableFanOffButton() 
-                                	}
-                            	} else {
-                            		disableFanOffButton()		// can't turn off the fan if the Thermostat isn't off
-                            		if (device.currentValue('fanMinOnTime') != 0) { sendValue = 'circulate' } else { sendValue = 'auto' }
-                            	}
-                        		sendEvent(name: 'thermostatFanModeDisplay', value: sendValue, isStateChange: true, displayed: false)	// have to force it to update for some reason
-                                break;
+                        		case 'auto':
+                            	case 'circulate':
+                        			if (device.currentValue('thermostatMode') == 'off') {
+                            			if (device.currentValue('fanMinOnTime') != 0) {	
+                                			sendValue = 'circulate dis'
+                                			enableFanOffButton() 
+                                		} else {
+                                			sendValue = 'off dis'		// display 'off' when Fan Mode == 'auto' && Thermostat Mode == 'off'
+                                			disableFanOffButton() 
+                                		}
+                            		} else {
+                            			disableFanOffButton()		// can't turn off the fan if the Thermostat isn't off
+                            			if (device.currentValue('fanMinOnTime') != 0) { sendValue = 'circulate' } else { sendValue = 'auto' }
+                            		}
+                        			sendEvent(name: 'thermostatFanModeDisplay', value: sendValue, isStateChange: true, displayed: false)	// have to force it to update for some reason
+                                	break;
                                 
-                        	case 'on':
-                        		sendEvent(name: 'thermostatFanModeDisplay', value: 'on', isStateChange: true, displayed: false)			// have to force it to update for some reason
-                                break;
-                        }
-                    } else {
-                        sendEvent(name: 'thermostatFanModeDisplay', value: "${sendValue} dis", isStateChange: true, displayed: false)	// have to force it to update for some reason
-                        disableFanOffButton()
+                        		case 'on':
+                        			sendEvent(name: 'thermostatFanModeDisplay', value: 'on', isStateChange: true, displayed: false)			// have to force it to update for some reason
+                                	break;
+                        	}
+                    	} else {
+                        	sendEvent(name: 'thermostatFanModeDisplay', value: "${sendValue} dis", isStateChange: true, displayed: false)	// have to force it to update for some reason
+                        	disableFanOffButton()
+                    	}
                     }
             		break;
 				
@@ -1080,11 +1082,13 @@ def generateEvent(Map results) {
                     if (isChange) {
                     	event = eventFront + [value: sendValue, isStateChange: true, displayed: false]
                         String tstatDate = new Date().parse('yyyy-MM-dd',sendValue).format('M-d\nyyyy')
-                    	String tstatTime = new Date().parse('HH:mm',sendValue.drop(11)).format('h:mma').toLowerCase()
-                    	if (isStateChange(device, 'tstatDate', tstatDate)) sendEvent(name: 'tstatDate', value: tstatDate, isStateChange: true, displayed: false)
-                    	if (isStateChange(device, 'tstatTime', tstatTime)) sendEvent(name: 'tstatTime', value: tstatTime, isStateChange: true, displayed: false)
+                    	String tstatTime = new Date().parse('HH:mm',sendValue.drop(11)).format('h:mm\na').toLowerCase()
+                    	if (isStateChange(device, 'tstatDate', tstatDate)) {
+                        	sendEvent(name: 'tstatDate', value: tstatDate, isStateChange: true, displayed: false)
+                            objectsUpdated++
+                        }
+                    	sendEvent(name: 'tstatTime', value: tstatTime, isStateChange: true, displayed: false) // assume time always is a change...
                     }
-                    objectsUpdated++ // Only counts as two objects
                     break;
                     
                 // Update the new (Optional) SetpointMin/Max attributes
@@ -1231,21 +1235,22 @@ def generateEvent(Map results) {
 				sendEvent(event)
 			}
             if (tempDisplay != "") {
-        		event = [ name: 'temperatureDisplay', value: tempDisplay, linkText: linkText, descriptionText:"Temperature Display is ${tempDisplay}", displayed: false ]
-        		sendEvent(event)
+        		sendEvent(name: 'temperatureDisplay', value: tempDisplay, linkText: linkText, descriptionText:"Temperature Display is ${tempDisplay}", displayed: false )
             	if (debugLevelFour) LOG("generateEvent() - Temperature updated, calling sendevent(${event})", 4)
                 objectsUpdated++
         	}
-         	if (state.supportedThermostatModes != supportedThermostatModes) {
-				state.supportedThermostatModes = supportedThermostatModes
-				sendEvent(name: "supportedThermostatModes", value: supportedThermostatModes, displayed: false, isStateChange: true)
-                sendEvent(name: "supportedThermostatFanModes", value: fanModes(), displayed: false, isStateChange: true)
-            }
 		}
+        if (state.supportedThermostatModes != supportedThermostatModes) {
+			state.supportedThermostatModes = supportedThermostatModes
+			sendEvent(name: "supportedThermostatModes", value: supportedThermostatModes, displayed: false, isStateChange: true)
+            sendEvent(name: "supportedThermostatFanModes", value: fanModes(), displayed: false, isStateChange: true)
+        }
 		generateSetpointEvent()
 		generateStatusEvent()
 	}
-    LOG("Updated ${objectsUpdated} object${objectsUpdated!=1?'s':''} (${now()-startMS}ms)",2,this,'info')
+    def elapsed = now() - startMS
+    LOG("Updated ${objectsUpdated} object${objectsUpdated!=1?'s':''} (${elapsed}ms)",2,this,'info')
+    // if (elapsed > 2500) log.debug results
 }
 
 private def disableVacationButtons() {
@@ -1633,7 +1638,7 @@ void setThermostatMode(String value) {
             } else { 
             	updates += [equipmentOperatingState:'idle'] 
             }
-            log.debug "updates: ${updates}"
+            // log.debug "updates: ${updates}"
             generateEvent(updates)	// force everything to update
 		} else {
 			LOG("Failed to change Thermostat Mode to ${value}, Mode is ${device.currentValue('thermostatMode')}", 1, null, 'error')
@@ -1719,7 +1724,7 @@ void setThermostatProgram(String program, holdType=null, holdHours=2) {
     	if (currentProgram == currentProgramName) {
         	LOG("Thermostat Program is ${program} (already)", 2, this, 'info')
             return
-        } else if (currentProgramName == "Hold: ${currentProgram}") {
+        } else if ((currentProgramName == "Hold: ${currentProgram}") || (currentProgramName == "Auto ${currentProgram}")) {
         	if (scheduledProgram == program) {
             	LOG("Thermostat Program is ${program} (resumed)", 2, this, 'info')
             	resumeProgramInternal(true)
@@ -1793,7 +1798,7 @@ void night() {
 void resumeProgram(resumeAll=true) {
 	String currentProgramName = device.currentValue('currentProgramName')
 	resumeProgramInternal(resumeAll)
-    if (currentProgramName.startsWith('Hold')) {
+    if (currentProgramName.startsWith('Hold') || currentProgramName.startsWith('Auto ')) {
     	//def updates = ['thermostatOperatingState':'idle','equipmentOperatingState':'idle']
         //log.debug updates
         //generateEvent(updates)
@@ -1873,7 +1878,8 @@ def setThermostatFanMode(String value, holdType=null, holdHours=2) {
         setValue = "auto"
     }
     
-    if ((device.currentValue('thermostatHold') != '') || (device.currentValue('currentProgramName').startsWith('Hold'))) {
+    def currentProgramName = device.currentValue('currentProgramName')
+    if ((device.currentValue('thermostatHold') != '') || currentProgramName.startsWith('Hold') || currentProgramName.startsWith('Auto ')) {
     	resumeProgramInternal(true)
     	refresh()
     }
@@ -1956,7 +1962,7 @@ def setThermostatFanMode(String value, holdType=null, holdHours=2) {
             }
             if (parent.setFanMode(this, setValue, fanMinOnTime, getDeviceId(), sendHoldType, sendHoldHours)) {
         		updates = [thermostatFanMode:'circulate',fanMinOnTime:fanMinOnTime]    
-                log.debug "${updates}"
+                // log.debug "${updates}"
             	generateEvent(updates)
             }
             break;
@@ -2080,12 +2086,14 @@ def generateSetpointEvent() {
 	switch (mode) {
 		case 'heat':
 		case 'emergencyHeat':
-			sendEvent(name:'thermostatSetpoint', value: "${heatingSetpoint}", displayed: false, isStateChange: true)
+			if (isStateChange(device, 'thermostatSetpoint', heatingSetpoint.toString())) sendEvent(name:'thermostatSetpoint', value: "${heatingSetpoint}", displayed: true,
+            																				descriptionText: "Thermostat setpoint is ${heatingSetpoint}°", isStateChange: true)
             if (debugLevelFour) LOG("Heating Setpoint = ${heatingSetpoint}", 4, null, "debug")
 			break;
 		
 		case 'cool':
-			sendEvent(name:'thermostatSetpoint', value: "${coolingSetpoint}", displayed: false, isStateChange: true)
+			if (isStateChange(device, 'thermostatSetpoint', coolingSetpoint.toString())) sendEvent(name:'thermostatSetpoint', value: "${coolingSetpoint}", displayed: true, 
+            																				descriptionText: "Thermostat setpoint is ${coolingSetpoint}°", isStateChange: true)
             if (debugLevelFour) LOG("Cooling Setpoint = ${coolingSetpoint}", 4, null, "debug")
 			break;
             
@@ -2094,7 +2102,8 @@ def generateSetpointEvent() {
         	def precision = device.currentValue('decimalPrecision')
     		if (precision == null) precision = isMetric ? 1 : 0
         	def avg = ((heatingSetpoint.toFloat() + coolingSetpoint.toFloat()) / 2.0).round(precision.toInteger())
-            sendEvent(name:'thermostatSetpoint', value: "${avg}", displayed: false, isStateChange: true)
+            if (isStateChange(device, 'thermostatSetpoint', avg.toString())) sendEvent(name:'thermostatSetpoint', value: avg.toString(), displayed: false, 
+            																				descriptionText: "Thermostat setpoint is ${avg}°", isStateChange: true)
             if (debugLevelFour) {
             	LOG("Heating Setpoint = ${heatingSetpoint}", 4, null, "debug")
                 LOG("Cooling Setpoint = ${coolingSetpoint}", 4, null, "debug")
@@ -2369,6 +2378,8 @@ def generateStatusEvent() {
         	statusText = 'Cooling '
             if (operatingState.contains('sma')) {
             	statusText += '(Smart Recovery)'
+            } else if (operatingState.contains('ove')) {
+            	statusText += '(Over Cooling)'
             } else {
             	statusText += "to ${coolingSetpoint}°"
             }
