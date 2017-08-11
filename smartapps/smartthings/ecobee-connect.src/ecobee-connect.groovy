@@ -34,11 +34,12 @@
  *	1.2.0 -	Release of holdHours and thermostat holdAction support
  *	1.2.2 - Fixes for Auto Away/Auto Home
  *	1.2.3 - Added overcool equipment operating state support
+ *	1.2.3a- Tweaked dehumification support
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.3" }
+def getVersionNum() { return "1.2.3a" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -2659,6 +2660,7 @@ def updateThermostatData() {
         Boolean isCooling = false
         Boolean smartRecovery = false
         Boolean overCool = false
+        Boolean dehumidifying = false
         
         // Let's deduce if we are in Smart Recovery mode
         if (equipStatus.contains('ea')) {
@@ -2674,6 +2676,8 @@ def updateThermostatData() {
             	if (runtime.actualHumidity > dehumidity) {
                 	if ((tempTemperature < tempCoolingSetpoint) && (tempTemperature >= (tempCoolingSetpoint - (statSettings?.dehumidifyOvercoolOffset?.toDouble()/10.0)))) {
                     	overCool = true
+                    } else {
+                    	dehumidifying = true
                     }
                 }         	
             }
@@ -2712,7 +2716,7 @@ def updateThermostatData() {
 				if 		(equipStatus.contains('l1')) { equipOpStat = (coolStages == 1) ? 'cooling' : 'cool 1' }
 				else if (equipStatus.contains('l2')) { equipOpStat = 'cool 2' }
                 
-				if (equipStatus.contains('de') || overCool) { equipOpStat += ' deh' }	// dehumidifying if cool
+				if (equipStatus.contains('de') || overCool || dehumidifying) { equipOpStat += ' deh' }	// dehumidifying if cool
                 
 			} else if (equipStatus.contains('de')) { // These can also run independent of heat/cool
         		equipOpStat = 'dehumidifier' 
