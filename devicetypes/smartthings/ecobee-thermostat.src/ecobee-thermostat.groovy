@@ -41,10 +41,11 @@
  *	1.2.1  - Ensure Mode buttons are enabled properly (esp. after vacation hold ends)
  *	1.2.2  - Handle "Auto Away" same as "Hold: Away" (& Auto Home)
  *	1.2.3  - Added overcool to operating state display, optimized generateEvent() handling
+ *	1.2.4  - Fix error in currentProgramName update 
  * 
  */
 
-def getVersionNum() { return "1.2.3" }
+def getVersionNum() { return "1.2.4" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -264,7 +265,7 @@ metadata {
             state "lost", label: "API ", backgroundColor: "#ffa81e", icon: "st.contact.contact.open"
 		}
 
-		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: true, decoration: 'flat') {
+		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false, decoration: 'flat') {
 			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true /*, icon: 'st.Weather.weather2'*/)
 		}
         
@@ -879,12 +880,15 @@ def generateEvent(Map results) {
                     	progText = 'Thermostat is Offline'
                         if (device.currentValue('currentProgramName') != 'Offline') disableAllButtons() // just went offline
                     } else {
-                    	def currentProgram = device.currentValue('currentProgramName')
-                    	if (currentProgram == 'Offline') enableAllButtons() // not offline any more
                     	progText = 'Program is '+sendValue.trim().replaceAll(':','')
                         def buttonValue = (sendValue.startsWith('Hold') || sendValue.startsWith('Auto ')) ? 'resume' : 'resume dis'
                         sendEvent(name: 'resumeProgram', value: buttonValue, displayed: false, isStateChange: true)	// change the button to Resume Program
-                        if (currentProgram.contains('acation')) updateModeButtons() 	// turn the mode buttons back on if we just exited a Vacation Hold
+                    	def currentProgram = device.currentValue('currentProgramName')
+                        if (currentProgram) {
+                        	// update the button states
+                    		if (currentProgram == 'Offline') enableAllButtons() // not offline any more
+                            if (currentProgram.contains('acation')) updateModeButtons() 	// turn the mode buttons back on if we just exited a Vacation Hold
+                        }	
                     }
 					if (isChange) event = eventFront + [value: sendValue, descriptionText: progText, isStateChange: true, displayed: true]
 					break;
