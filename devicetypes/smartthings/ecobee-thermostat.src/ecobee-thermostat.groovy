@@ -41,11 +41,12 @@
  *	1.2.1  - Ensure Mode buttons are enabled properly (esp. after vacation hold ends)
  *	1.2.2  - Handle "Auto Away" same as "Hold: Away" (& Auto Home)
  *	1.2.3  - Added overcool to operating state display, optimized generateEvent() handling
- *	1.2.4  - Fix error in currentProgramName update 
+ *	1.2.4  - Fix error in currentProgramName update
+ *	1.2.5  - Reinstated default icon for the default Temperature tile
  * 
  */
 
-def getVersionNum() { return "1.2.4" }
+def getVersionNum() { return "1.2.5" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -266,7 +267,7 @@ metadata {
 		}
 
 		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false, decoration: 'flat') {
-			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true /*, icon: 'st.Weather.weather2'*/)
+			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
 		}
         
         // these are here just to get the colored icons to diplay in the Recently log in the Mobile App
