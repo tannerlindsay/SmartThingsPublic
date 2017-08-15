@@ -36,11 +36,12 @@
  *	1.2.3 - Added overcool equipment operating state support
  *	1.2.3a- Tweaked dehumidification support
  *	1.2.4 -	Catch OAuth initialization error and suggest probable cause in Log and UI
+ *	1.2.5 - Clean up & optimize OAuth error detection and logging
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.4" }
+def getVersionNum() { return "1.2.5" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -211,18 +212,28 @@ def removePage() {
 
 // Setup OAuth between SmartThings and Ecobee clouds
 def authPage() {
-	LOG("=====> authPage() Entered", 2, null, 'info')
+	LOG("authPage() --> Begin", 3, null, 'trace')
 
 	if(!atomicState.accessToken) { //this is an access token for the 3rd party to make a call to the connect app
 		try {
 			atomicState.accessToken = createAccessToken()
        	} catch(Exception e) {
     		LOG("authPage() --> OAuth Exception: ${e}", 1, null, "error")
-            LOG("authPage() --> Probable Cause: OAuth not enabled in SmartThings IDE for the 'Ecobee (Connect)' SmartApp", 1, null, 'warn')
-    	}	
+            LOG("authPage() --> Probable Cause: OAuth not enabled in SmartThings IDE for the 'Ecobee (Connect)' SmartApp", 1, null, 'info')
+        	if (!atomicState.accessToken) {
+            	LOG("authPage() --> No OAuth Access token", 3, null, 'error')
+        		return dynamicPage(name: "authPage", title: "OAuth Initialization Failure", nextPage: "", uninstall: true) {
+            		section() {
+                		paragraph "Error initializing Ecobee Authentication: could not get the OAuth access token.\n\nPlease verify that OAuth has been enabled in " +
+                    		"the SmartThings IDE for the 'Ecobee (Connect)' SmartApp, and then try again.\n\nIf this error persists, view Live Logging in the IDE for " +
+                        	"additional error information."
+                	}
+            	}
+    		}
+        }
 	}
 
-	def description = "Click to enter ecobee Credentials"
+	def description = ''
 	def uninstallAllowed = false
 	def oauthTokenProvided = false
 
@@ -236,26 +247,15 @@ def authPage() {
 	}
 
 	def redirectUrl = buildRedirectUrl //"${serverUrl}/oauth/initialize?appId=${app.id}&access_token=${atomicState.accessToken}"
-    LOG("authPage() --> RedirectUrl = ${redirectUrl}", 3, null, 'trace')
     
 	// get rid of next button until the user is actually auth'd
 	if (!oauthTokenProvided) {
-        if (atomicState.accessToken) {
-        	LOG("authPage() --> Valid OAuth Access token, need OAuth token", 3, null, 'trace')
-			return dynamicPage(name: "authPage", title: "ecobee Setup", nextPage: "", uninstall: uninstallAllowed) {
-				section() {
-					paragraph "Tap below to log in to the ecobee service and authorize SmartThings access. Be sure to press the 'Allow' button on the 2nd page."
-					href url:redirectUrl, style:"embedded", required:true, title: "ecobee Account Authorization", description:description 
-				}
-            }
-		} else {
-        	LOG("authPage() --> No OAuth Access token", 3, null, 'trace')
-        	return dynamicPage(name: "authPage", title: "OAuth Failure", nextPage: "", uninstall: true) {
-            	section() {
-                	paragraph "Error setting up Ecobee Authentication: could not get the OAuth access token.\n\nPlease verify that OAuth has been enabled in " +
-                    	"the SmartThings IDE for the 'Ecobee (Connect)' SmartApp, and then try again.\n\nIf this error persists, view Live Logging in the IDE for " +
-                        "additional error information."
-                }
+        LOG("authPage() --> Valid OAuth Access token, need OAuth token", 3, null, 'trace')
+        LOG("authPage() --> RedirectUrl = ${redirectUrl}", 3, null, 'info')
+		return dynamicPage(name: "authPage", title: "ecobee Setup", nextPage: "", uninstall: uninstallAllowed) {
+			section() {
+				paragraph "Tap below to log in to the ecobee service and authorize SmartThings access. Be sure to press the 'Allow' button on the 2nd page."
+				href url:redirectUrl, style:"embedded", required:true, title: "ecobee Account Authorization", description:description 
             }
        	}
 	} else {    	
@@ -267,7 +267,6 @@ def authPage() {
 			}
         }           
 	}
-    LOG("<===== authPage() Exit", 2, null, 'info')
 }
 
 // Select which Thermostats are to be used
