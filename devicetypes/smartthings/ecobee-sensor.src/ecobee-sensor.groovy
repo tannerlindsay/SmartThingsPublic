@@ -25,10 +25,11 @@
  *  1.0.8  - Setting decimals=0 now also applies to value displayed in device lists
  *	1.0.9  - Uses new Refresh icon
  *	1.2.0  - Sync revision number with new holdHours/holdAction updates
+ *	1.2.1  - Reinstated default icon for default Temperature tile
  *
  */
 
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.1" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -97,15 +98,9 @@ metadata {
  				attributeState "not supported", action: "noOp", nextState: "not supported", label: "N/A", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/notsupported_x.png"
             }
 		}
-        
-//		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: true, decoration: 'flat') {
-//            state("temperature", defaultState: true, label:'${currentValue}°', unit:"dF",
-//				backgroundColors: getTempColors()/* , icon: "st.Weather.weather2"*/
-//			)
-//		}
-        
-        valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: true, decoration: 'flat') {
-			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon:'')// 'st.Weather.weather2')
+
+        valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false, decoration: 'flat') {
+			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon:'st.Weather.weather2')
 		}
         
         standardTile("motion", "device.motion", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
@@ -114,11 +109,7 @@ metadata {
             state "unknown", action: "noOp", label:"Offline", nextState: "unknown", icon: "https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/motion_sensor_noconnection.png"
             state "not supported", action: "noOp", nextState: "not supported", label: "N/A", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/notsupported_x.png"
 		}
-        
-		//standardTile("refresh", "device.thermostatMode", width: 1, height: 1,inactiveLabel: false, decoration: "flat") {
-        //    state "default", action:"refresh.refresh", label: "Refresh", icon:"https://raw.githubusercontent.com/StrykerSKS/SmartThings/master/smartapp-icons/ecobee/png/header_ecobeeicon_blk.png"
-		//}
-        
+
         standardTile("refresh", "device.doRefresh", width: 1, height: 1, inactiveLabel: false, decoration: "flat") {
             state "refresh", action:"doRefresh", nextState: 'updating', label: "Refresh", defaultState: true, icon:"https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/ecobee_refresh_green.png"
             state "updating", label:"Working", icon: "st.motion.motion.inactive"
