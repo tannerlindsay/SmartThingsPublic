@@ -30,8 +30,9 @@
  * 1.0.7 - Allow fanMinutes == 0
  * 1.0.8 - Allow override/cancellation of Vacation Hold (e.g., came home early)
  * 1.2.0 - Update to support holdHours and thermostat holdAction
+ * 1.2.1 - Corrected setHold logic 
  */
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.1" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -393,8 +394,10 @@ def changeProgramHandler(evt) {
                     			stat."${state.fanCommand}"()				// set fan on/auto
                         		fanSet = true
                     		}
-                			sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}${fanSet?' with the requested fan settings.':'.'}")
-                			done = true
+                            if (whatHoldType(stat) == 'nextTransition') {
+                				sendNotificationEvent("And I resumed the scheduled ${state.programParam} on ${stat}${fanSet?' with the requested fan settings.':'.'}")
+                				done = true
+                            }
             			} else { 
                         	// the scheduledProgram is NOT the desiredProgram, so we need to resumeAll, then set the desired program as a Hold: Program
                 			stat.resumeProgram(true)
