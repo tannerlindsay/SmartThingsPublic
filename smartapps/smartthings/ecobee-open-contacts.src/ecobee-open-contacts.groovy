@@ -23,10 +23,12 @@
  *	1.0.7	-	Near total logic rewrite for clarity and optimization PLEASE OPEN/SAVE ALL EXISTING APP INSTANCES!!
  *  1.0.8   -   Correct typo preventing turning off HVAC in some situations
  *	1.2.0 	- 	Sync version number with new holdHours/holdAction support
+ *	1.2.1	-	Changed order of LOGging
+ *	1.2.2	- 	Include device names in notifications
  *
  */
  
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.2" }
 private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
 
 definition(
@@ -96,8 +98,7 @@ def mainPage() {
         				}                
                 	}
             	}
-            }
-            
+            }          
 		} // End if (myThermostats?.size() > 0)
 
 		section(title: "Temporarily Disable?") {
@@ -248,39 +249,61 @@ def turnOffHVAC() {
     atomicState.HVACModeState = 'off'
     def action = settings.whichAction?:'Notify Only'
     def tmpThermSavedState = [:]
+    def tstatNames = []
+    def doHVAC = action.contains('HVAC')
     settings.myThermostats.each() { therm ->
     	def tid = therm.id
     	tmpThermSavedState[tid] = therm.currentThermostatMode
         // LOG("Updated state: ${tmpThermSavedState[therm.id]", 5)
-        if( action.contains('HVAC') ) {
-    		if (tmpThermSavedState[tid] != 'off') therm.setThermostatMode('off')
-            LOG("${therm} turned off (was ${tmpThermSavedState[tid]})",2,null,'info')
+        if( doHVAC ) {
+    		if (tmpThermSavedState[tid] != 'off') {
+            	therm.setThermostatMode('off')
+                tstatNames << [therm.device.displayName]		// only report the ones that aren't off already
+                LOG("${therm.device.displayName} turned off (was ${tmpThermSavedState[tid]})",2,null,'info')
+            }
         } else {
-        	LOG("Saved ${therm}'s current mode (${tmpThermSavedState[tid]})",2,null,'info')
+        	if (tmpThermSavedState[tid] != 'off') {
+                tstatNames << [therm.device.displayName]		// only report the ones that aren't off
+        		LOG("Saved ${therm.device.displayName}'s current mode (${tmpThermSavedState[tid]})",2,null,'info')
+            }
         }
     }
     atomicState.thermSavedState = tmpThermSavedState
-
-    if (action.contains('Notify')) {
-    	boolean notified = false
-        def delay = (settings.offDelay?:5).toInteger()
-    	if (contactSensors) {
-        	if (delay != 0) {
-    			sendNotification("${app.label}: Door or Window left ${contactOpen?'open':'closed'} for ${settings.offDelay} minutes, turning HVAC off.")
-            } else {
-            	sendNotification("${app.label}: Door or Window ${contactOpen?'opened':'closed'}, turning HVAC off.")
-            }
-            notified = true		// only send 1 notification
+	if (tstatNames.size() > 0) {
+    	if (action.contains('Notify')) {
+    		boolean notified = false
+        	def delay = (settings.offDelay?:5).toInteger()
+    		if (contactSensors) {
+        		def sensorNames = []
+            	contactSensors.each { 
+            		if (it.currentContact() == (contactOpen?true:false)) sensorNames << [it.device.displayName]
+            	}
+        		if (delay != 0) {
+    				sendNotification("${app.label}: ${sensorNames} left ${contactOpen?'open':'closed'} for ${settings.offDelay} minutes, ${doHVAC?'turning':'you should turn'} ${tstatNames} off.")
+            	} else {
+            		sendNotification("${app.label}: ${sensorNames} ${contactOpen?'opened':'closed'}, ${doHVAC?'turning':'you should turn'} ${tstatNames} off.")
+            	}
+            	notified = true		// only send 1 notification
+        	}
+        	if (!notified && theSwitches) {
+        		def switchNames = []
+            	theSwitches.each {
+            		if (it.currentSwitch() == (switchOn?'on':'off')) switchNames << [it.device.displayName]
+            	}
+        		if (delay != 0) {
+    				sendNotification("${app.label}: ${switchNames} left ${switchOn?'on':'off'} for ${settings.offDelay} minutes, ${doHVAC?'turning':'you should turn'} ${tstatNames} off.")
+            	} else {
+            		sendNotification("${app.label}: ${switchNames} turned ${switchOn?'on':'off'}, ${doHVAC?'turning':'you should turn'} ${tstatNames} off.")
+            	}
+          		notified = true
+        	}
+        	if (notified) LOG('Notifications sent',2,null,'info')
+    	}
+    } else {
+    	if (action.contains('Notify')) {
+        	sendNotification("${app.label}: ${settings.myThermostats} already off.")
+            LOG('All thermostats are already off',2,null,'info')
         }
-        if (!notified && theSwitches) {
-        	if (delay != 0) {
-    			sendNotification("${app.label}: Switch left ${switchOn?'on':'off'} for ${settings.offDelay} minutes, turning HVAC off.")
-            } else {
-            	sendNotification("${app.label}: Switch turned ${switchOn?'on':'off'}, turning HVAC off.")
-            }
-          	notified = true
-        }
-        if (notified) LOG('Notifications sent',2,null,'info')
     }
 }
 
@@ -289,13 +312,16 @@ def turnOnHVAC() {
 	LOG("turnonHVAC() entered", 5,null,'trace')
     atomicState.HVACModeState = 'on'
     def action = settings.whichAction?:'Notify Only'
-    
-    if (action.contains('HVAC')) {
+    def tstatNames = []
+    def doHVAC = action.contains('HVAC')
+    // def didHVAC = false
+    if (doHVAC) {
 	   	// Restore to previous state 
         // LOG("Restoring to previous state", 5) 
         
         settings.myThermostats.each { therm ->
 			// LOG("Working on thermostat: ${therm}", 5)
+            tstatNames << [therm.device.displayName]
             def tid = therm.id
             String priorMode = settings.defaultMode
             if (atomicState.thermSavedState?.containsKey(tid)) {
@@ -303,7 +329,10 @@ def turnOnHVAC() {
             }
             
 			LOG("Setting ${therm} mode to ${priorMode}",2,null,'info')
-			therm.setThermostatMode(priorMode)
+			if ( therm.currentValue('thermostatMode') != priorMode) {
+            	therm.setThermostatMode(priorMode)
+                // didHVAC = true
+            }
 		} 
 	}
     
@@ -312,17 +341,17 @@ def turnOnHVAC() {
         def delay = (settings.onDelay?:5).toInteger()
     	if (contactSensors) {
         	if (delay != 0) {
-    			sendNotification("${app.label}: All Doors and Windows ${contactOpen?'closed':'opened'} for ${settings.onDelay} minutes, turning HVAC on.")
+    			sendNotification("${app.label}: All Doors and Windows ${contactOpen?'closed':'opened'} for ${settings.onDelay} minutes, ${doHVAC?'turning':'you could turn'} ${tstatNames} on.")
             } else {
-            	sendNotification("${app.label}: All Doors and Windows are ${contactOpen?'closed':'open'}, turning HVAC on.")
+            	sendNotification("${app.label}: All Doors and Windows are ${contactOpen?'closed':'open'}, ${doHVAC?'turning':'you could turn'} ${tstatNames} on.")
             }
             notified = true		// only send 1 notification
         }
         if (!notified && theSwitches) {
         	if (delay != 0) {
-    			sendNotification("${app.label}: ${(theSwitches.size()>1)?'All switches':'Switch'} left ${switchOn?'off':'on'} for ${settings.onDelay} minutes, turning HVAC on.")
+    			sendNotification("${app.label}: ${(theSwitches.size()>1)?'All switches':'Switch'} left ${switchOn?'off':'on'} for ${settings.onDelay} minutes, ${doHVAC?'turning':'you could turn'} ${tstatNames} on.")
             } else {
-            	sendNotification("${app.label}: ${(theSwitches.size()>1)?'All switches':'Switch'} turned ${switchOn?'off':'on'}, turning HVAC on.")
+            	sendNotification("${app.label}: ${(theSwitches.size()>1)?'All switches':'Switch'} turned ${switchOn?'off':'on'}, ${doHVAC?'turning':'you could turn'} ${tstatNames} on.")
             }
             notified = true
         }
@@ -375,6 +404,6 @@ private def sendNotification(message) {
 
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
 	String msg = "${app.label} ${message}"
-	parent.LOG(msg, level, null, logType, event, displayEvent)
     log."${logType}" message
+	parent.LOG(msg, level, null, logType, event, displayEvent)
 }
