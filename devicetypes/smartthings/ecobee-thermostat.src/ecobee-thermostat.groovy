@@ -44,10 +44,11 @@
  *	1.2.4  - Fix error in currentProgramName update
  *	1.2.5  - Reinstated default icon for the default Temperature tile
  *	1.2.6  - Fixed display of Mode & fanMode icons when selected; keep unsupported Modes disabled
+ *	1.2.7  - Added Awake, Auto Home and Auto Away program icons, changed Vacation airplane to solid blue (for consistency)
  * 
  */
 
-def getVersionNum() { return "1.2.6" }
+def getVersionNum() { return "1.2.7" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -421,9 +422,10 @@ metadata {
 			state "Home", action:"noOp", nextState:'Home', label: 'Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png"
 			state "Away", action:"noOp", nextState:'Away', label: 'Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png"
             state "Sleep", action:"noOp", nextState:'Sleep', label: 'Sleep', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue.png"
+            state "Awake", action:"noOp", nextState:'Awake', label: 'Awake', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
             state "Auto", action:"noOp", nextState:'Auto', label: 'Auto', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
-            state "Auto Away", action:"noOp", nextState:'Auto Away', label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png" // Fix to auto version
-            state "Auto Home", action:"noOp", nextState:'Auto Home', label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png" // Fix to auto
+            state "Auto Away", action:"noOp", nextState:'Auto Away', label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_auto_away.png" // Fix to auto version
+            state "Auto Home", action:"noOp", nextState:'Auto Home', label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_auto_home.png" // Fix to auto
             state "Hold", action:"noOp", nextState:'Hold', label: 'Hold', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
             state "Hold: Fan", action:"noOp", nextState:'Hold: Fan', label: "Hold: Fan", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_solid_blue.png"
             state "Hold: Fan On", action:"noOp", nextState:'Hold: Fan on', label: "Hold: Fan On", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_solid_blue.png"
@@ -432,7 +434,7 @@ metadata {
             state "Hold: Home", action:"noOp", nextState:'Hold: Home', label: 'Hold: Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue_solid.png"
             state "Hold: Away", action:"noOp", nextState:'Hold: Away', label: 'Hold: Away',  icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue_solid.png"
             state "Hold: Sleep", action:"noOp", nextState:'Hold: Sleep', label: 'Hold: Sleep',  icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue_solid.png"
-      		state "Vacation", action: "noOp", nextState:'Vacation', label: 'Vacation', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_vacation_airplane_yellow.png"
+      		state "Vacation", action: "noOp", nextState:'Vacation', label: 'Vacation', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_vacation_blue_solid.png"
       		state "Offline", action: "noOp", nextState:'Offline', label: 'Offline', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_black_dot.png"
             state "Hold: Temp", action: 'noOp', nextState: 'Hold: Temp', label: 'Hold: Temp', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/thermometer_hold.png"
             state "default", action:"noOp", nextState: 'default', label: '${currentValue}', defaultState: true, icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
