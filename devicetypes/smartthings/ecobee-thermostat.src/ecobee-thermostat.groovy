@@ -45,10 +45,11 @@
  *	1.2.5  - Reinstated default icon for the default Temperature tile
  *	1.2.6  - Fixed display of Mode & fanMode icons when selected; keep unsupported Modes disabled
  *	1.2.7  - Added Awake, Auto Home and Auto Away program icons, changed Vacation airplane to solid blue (for consistency)
+ *	1.2.8  - Fixed changing setpoint, display of multi-stage heat/cool equipmentOperatingState
  * 
  */
 
-def getVersionNum() { return "1.2.7" }
+def getVersionNum() { return "1.2.8" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -268,8 +269,8 @@ metadata {
             state "lost", label: "API ", backgroundColor: "#ffa81e", icon: "st.contact.contact.open"
 		}
 
-		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false, decoration: 'flat') {
-			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
+		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
+			state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
 		}
         
         // these are here just to get the colored icons to diplay in the Recently log in the Mobile App
@@ -840,7 +841,13 @@ def generateEvent(Map results) {
                         	sendEvent(name: 'thermostatOperatingStateDisplay', value: 'off', descriptionText: 'Thermostat is off', displayed: false, isStateChange: true)
                         	objectsUpdated += 2
                         }
-                     	event = eventFront + [value: sendValue, descriptionText: "Equipment is ${sendValue}", isStateChange: true, displayed: true]
+                        String descText = sendValue.endsWith('deh') ? sendValue.replace('deh', '& dehumidifying') : (sendValue.endsWith('hum') ? sendValue.replace('hum', '& humidifying') : sendValue)
+                        if (!descText.startsWith('heat pump')) {
+                        	descText = descText.replace('heat ','heating ')
+                        	descText = descText.replace('cool ', 'cooling ')
+                        }
+                        descText = descText.replace('1', 'stage 1').replace('2', 'stage 2').replace('3', 'stage 3')
+                     	event = eventFront + [value: sendValue, descriptionText: "Equipment is ${descText}", isStateChange: true, displayed: true]
                     }
 					break;
 				
@@ -1524,8 +1531,8 @@ void setHeatingSetpoint(Double setpoint) {
         Double heatOffset = 0.0
         Double coolOffset = 0.0
         if ((thermostatOperatingState == 'idle') || (thermostatOperatingState == 'fan only')) {
-        	heatOffset = device.currentValue('heatingDifferential').toDouble()
-			coolOffset = device.currentValue('coolingDifferential').toDouble()
+        	heatOffset = device.currentValue('heatDifferential').toDouble()
+			coolOffset = device.currentValue('coolDifferential').toDouble()
         }
         // TODO: Need to convert back to C here for the display
     	def updates = ['heatingSetpoint':((heatingSetpoint-heatOffset).round(precision))]
@@ -1589,8 +1596,8 @@ void setCoolingSetpoint(Double setpoint) {
         Double heatOffset = 0.0
         Double coolOffset = 0.0
         if ((thermostatOperatingState == 'idle') || (thermostatOperatingState == 'fan only')) {
-        	heatOffset = device.currentValue('heatingDifferential').toDouble()
-			coolOffset = device.currentValue('coolingDifferential').toDouble()
+        	heatOffset = device.currentValue('heatDifferential').toDouble()
+			coolOffset = device.currentValue('coolDifferential').toDouble()
         }
         // TODO: Need to convert back to C here for the display
     	def updates = ['heatingSetpoint':((heatingSetpoint-heatOffset).round(precision))]
