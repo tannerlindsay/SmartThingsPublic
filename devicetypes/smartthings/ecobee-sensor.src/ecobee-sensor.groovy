@@ -26,10 +26,11 @@
  *	1.0.9  - Uses new Refresh icon
  *	1.2.0  - Sync revision number with new holdHours/holdAction updates
  *	1.2.1  - Reinstated default icon for default Temperature tile
+ *	1.2.2  - Added new Program icons, Awake/Wakeup attributes (not currently displayed)
  *
  */
 
-def getVersionNum() { return "1.2.1" }
+def getVersionNum() { return "1.2.2" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -47,6 +48,8 @@ metadata {
         attribute "Home", "string"
         attribute "Away", "string"
         attribute "Sleep", "string"
+        attribute "Awake", "string"
+        attribute "Wakeup", "string"       
         attribute "thermostatId", "string"
         attribute "doors", "string"
         attribute "windows", "string"
@@ -99,8 +102,11 @@ metadata {
             }
 		}
 
-        valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, canChangeBackground: false, decoration: 'flat') {
-			state("temperature", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon:'st.Weather.weather2')
+        valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
+        	// Use the first version below to show Temperature in Device History - will also show Large Temperature when device is default for a room
+            // 		The second version will show icon in device lists
+			//state("default", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true)
+            state("default", label:'${currentValue}°', unit:"dF", backgroundColors: getTempColors(), defaultState: true, icon:'st.Weather.weather2')
 		}
         
         standardTile("motion", "device.motion", width: 2, height: 2, inactiveLabel: false, decoration: "flat") {
@@ -167,19 +173,26 @@ metadata {
         }
         
         standardTile("currentProgramIcon", "device.currentProgramName", height: 2, width: 2, inactiveLabel: false, decoration: "flat") {
-			state "Home", action:"noOp", label: 'Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png"
-			state "Away", action:"noOp", label: 'Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png"
-            state "Sleep", action:"noOp", label: 'Sleep', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue.png"
-            state "Auto Away", action:"noOp", label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png" // Fix to auto version
-            state "Auto Home", action:"noOp", label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png" // Fix to auto
-            state "Hold", action:"noOp", label: "Hold Activated", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
-            state "Hold: Fan", action:"noOp", label: "Hold: Fan", icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_solid.png"
-            state "Hold: Home", action:"noOp", label: 'Hold: Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue_solid.png"
-            state "Hold: Away", action:"noOp", label: 'Hold: Away',  icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue_solid.png"
-            state "Hold: Sleep", action:"noOp", label: 'Hold: Sleep',  icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue_solid.png"
-      		state "Vacation", action: "noOp", label: 'Vacation', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_vacation_airplane_yellow.png"
-			state "Offline", action: "noOp", label: 'Offline', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_black_dot.png"
-			state "default", action:"noOp", label: '${currentValue}', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
+			state "Home", 				action:"noOp", 	nextState:'Home', 				label: 'Home', 				icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png"
+			state "Away", 				action:"noOp", 	nextState:'Away', 				label: 'Away', 				icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png"
+            state "Sleep", 				action:"noOp", 	nextState:'Sleep', 				label: 'Sleep', 			icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue.png"
+            state "Awake", 				action:"noOp", 	nextState:'Awake', 				label: 'Awake', 			icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
+            state "Wakeup", 			action:"noOp", 	nextState:'Wakeup', 			label: 'Wakeup', 			icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
+			state "Auto", 				action:"noOp", 	nextState:'Auto', 				label: 'Auto', 				icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
+			state "Auto Away", 			action:"noOp", 	nextState:'Auto Away', 			label: 'Auto Away', 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png" // Fix to auto version
+            state "Auto Home", 			action:"noOp", 	nextState:'Auto Home', 			label: 'Auto Home', 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue.png" // Fix to auto
+            state "Hold", 				action:"noOp", 	nextState:"Hold", 				label: "Hold Activated", 	icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
+            state "Hold: Fan", 			action:"noOp", 	nextState:"Hold: Fan", 			label: "Hold: Fan", 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_solid.png"
+            state "Hold: Fan On", 		action:"noOp", 	nextState:'Hold: Fan on', 		label: "Hold: Fan On", 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_solid_blue.png"
+            state "Hold: Fan Auto",		action:"noOp", 	nextState:'Hold: Fan Auto',		label: "Hold: Fan Auto", 	icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on_blue.png"
+            state "Hold: Circulate",	action:"noOp", 	nextState:'Hold: Circulate',	label: "Hold: Circulate",	icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/systemmode_fan_on-1_blue..png"
+			state "Hold: Home", 		action:"noOp", 	nextState:'Hold: Home', 		label: 'Hold: Home', 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_home_blue_solid.png"
+            state "Hold: Away", 		action:"noOp", 	nextState:'Hold: Away', 		label: 'Hold: Away', 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue_solid.png"
+            state "Hold: Sleep", 		action:"noOp", 	nextState:'Hold: Sleep', 		label: 'Hold: Sleep',		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue_solid.png"
+      		state "Vacation", 			action:"noOp",	nextState:'Vacation', 			label: 'Vacation', 			icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_vacation_blue_solid.png"
+			state "Offline", 			action:"noOp",	nextState:'Offline', 			label: 'Offline', 			icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_black_dot.png"
+            state "Hold: Temp", 		action:'noOp',	nextState: 'Hold: Temp', 		label: 'Hold: Temp', 		icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/thermometer_hold.png"
+			state "default", 			action:"noOp", 	nextState:'default', 			label:'${currentValue}', 	icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
 		}
 
 		main ('temperature') //, "temperatureDisplay",])
@@ -309,8 +322,10 @@ def addSensorToProgram(programId) {
     		result = parent.addSensorToProgram(this, device.currentValue('thermostatId'), getSensorId(), programId.toLowerCase())
             if (result) {
     			sendEvent(name: "${programId.capitalize()}", value: 'on', isStateChange: true, displayed: false)
-        		runIn(5, refresh, [overwrite: true])
+            } else {
+            	sendEvent(name: "${programId.capitalize()}", value: 'off', isStateChange: true, displayed: false)
             }
+            runIn(5, refresh, [overwrite: true])
        	} else {
        		result = true
     	}
@@ -338,8 +353,10 @@ def deleteSensorFromProgram(programId) {
     		result = parent.deleteSensorFromProgram(this, device.currentValue('thermostatId'), getSensorId(), programId.toLowerCase())
            	if (result) {	
     			sendEvent(name: "${programId.capitalize()}", value: 'off', isStateChange: true, displayed: false)
-        		runIn(5, refresh, [overwrite: true])
-    		} 
+            } else {
+            	sendEvent(name: "${programId.capitalize()}", value: 'on', isStateChange: true, displayed: false)
+            }
+        	runIn(5, refresh, [overwrite: true]) 
        	} else {
         	result = true	// not in this Program anyway
         }
