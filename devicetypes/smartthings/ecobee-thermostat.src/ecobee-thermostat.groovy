@@ -46,10 +46,11 @@
  *	1.2.6  - Fixed display of Mode & fanMode icons when selected; keep unsupported Modes disabled
  *	1.2.7  - Added Awake, Auto Home and Auto Away program icons, changed Vacation airplane to solid blue (for consistency)
  *	1.2.8  - Fixed changing setpoint, display of multi-stage heat/cool equipmentOperatingState
+ *	1.2.9  - Added Wakeup as synonym for Awake
  * 
  */
 
-def getVersionNum() { return "1.2.8" }
+def getVersionNum() { return "1.2.9" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -270,7 +271,10 @@ metadata {
 		}
 
 		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
-			state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
+        	// Use the first version below to show Temperature in Device History - will also show Large Temperature when device is default for a room
+            // 		The second version will show icon in device lists
+			//state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true)
+            state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
 		}
         
         // these are here just to get the colored icons to diplay in the Recently log in the Mobile App
@@ -424,7 +428,8 @@ metadata {
 			state "Away", action:"noOp", nextState:'Away', label: 'Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_away_blue.png"
             state "Sleep", action:"noOp", nextState:'Sleep', label: 'Sleep', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue.png"
             state "Awake", action:"noOp", nextState:'Awake', label: 'Awake', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
-            state "Auto", action:"noOp", nextState:'Auto', label: 'Auto', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
+            state "Wakeup", action:"noOp", nextState:'Wakeup', label: 'Wakeup', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
+			state "Auto", action:"noOp", nextState:'Auto', label: 'Auto', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
             state "Auto Away", action:"noOp", nextState:'Auto Away', label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_auto_away.png" // Fix to auto version
             state "Auto Home", action:"noOp", nextState:'Auto Home', label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_auto_home.png" // Fix to auto
             state "Hold", action:"noOp", nextState:'Hold', label: 'Hold', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
