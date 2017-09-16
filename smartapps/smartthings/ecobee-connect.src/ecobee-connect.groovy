@@ -37,11 +37,12 @@
  *	1.2.3a- Tweaked dehumidification support
  *	1.2.4 -	Catch OAuth initialization error and suggest probable cause in Log and UI
  *	1.2.5 - Clean up & optimize OAuth error detection and logging
+ *	1.2.6 - Repaired add/deleteSensorFromProgram (Ecobee API requires both schedule & climate)
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.5" }
+def getVersionNum() { return "1.2.6" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -1752,11 +1753,7 @@ private def pollEcobeeAPI(thermostatIdsString = '') {
                     
                     if (forcePoll || thermostatUpdated) {
                         if (stat.settings) tempSettings[tid] = stat.settings
-                        
-                        if (stat.program) {		// tempProgram[tid] = stat.program}
-                        	stat.program.remove('schedule')	// for now, we don't need to slog around the schedule data
-                            tempProgram[tid] = stat.program
-                        }
+                        if (stat.program) tempProgram[tid] = stat.program
                         if (stat.events) tempEvents[tid] = stat.events
                         if (stat.location) tempLocation[tid] = stat.location
                         // if (stat.oemCfg) tempOemCfg[tid] = stat.oemCfg
@@ -3385,7 +3382,7 @@ def setProgram(child, program, String deviceId, sendHoldType='indefinite', sendH
 }
 
 def addSensorToProgram(child, deviceId, sensorId, programId) {
-	LOG("addSensorToProgram(${child},${deviceId},${sensorId},${programId})",4,child,'trace')
+	LOG("addSensorToProgram(${child.device.displayName},${deviceId},${sensorId},${programId})",4,child,'trace')
 	String preText = getDebugLevel() <= 2 ? '' : 'addSensorToProgram() - '
     
     // we basically have to edit the program object in place, and then return the entire thing back to the Ecobee API
@@ -3414,7 +3411,8 @@ def addSensorToProgram(child, deviceId, sensorId, programId) {
             def thermostatSettings = ',"thermostat":{"program":' + programJson +'}'
     		def thermostatFunctions = ''
     		def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
-    		result = sendJson(child, jsonRequestBody)
+    		LOG("jsonRequest: ${jsonRequestBody}",4,child,'trace')
+            result = sendJson(child, jsonRequestBody)
     		LOG("addSensorToProgram() returned ${result}", 4, child,'trace') 
         	if (result) {
         		LOG("${preText}Added sensor ${sensorId} to the ${programId.capitalize()} program on thermostat ${deviceId}",3,child,'info')
@@ -3429,7 +3427,7 @@ def addSensorToProgram(child, deviceId, sensorId, programId) {
 }
 
 def deleteSensorFromProgram(child, deviceId, sensorId, programId) {
-	LOG("deleteSensorFromProgram(${child},${deviceId},${sensorId},${programId})",4,child,'trace')
+	LOG("deleteSensorFromProgram(${child.device.displayName},${deviceId},${sensorId},${programId})",4,child,'trace')
     String preText = getDebugLevel() <= 2 ? '' : 'deleteSensorFromProgram() - '
     
 	def program = atomicState.program[deviceId]
@@ -3449,14 +3447,18 @@ def deleteSensorFromProgram(child, deviceId, sensorId, programId) {
                     program.climates[c].sensors = program.climates[c].sensors - program.climates[c].sensors[s]   
         			def programJson = JsonOutput.toJson(program)
             		def thermostatSettings = ',"thermostat":{"program":' + programJson +'}'
-    				def thermostatFunctions = ''
+                    def thermostatFunctions = ''
     				def jsonRequestBody = '{"selection":{"selectionType":"thermostats","selectionMatch":"' + deviceId + '"},"functions":['+thermostatFunctions+']'+thermostatSettings+'}'
-    				def result = sendJson(child, jsonRequestBody)
+                    LOG("jsonRequestBody: ${jsonRequestBody}",4,child,'trace')
+                    def result = sendJson(child, jsonRequestBody)
     				LOG("deleteSensorFromProgram() returned ${result}", 4, child,'trace') 
         			if (result) {
         				LOG("${preText}Deleted sensor ${sensorId} from the ${programId.capitalize()} program on thermostat ${deviceId}",3,child,'info')
             			return true
-            		}
+            		} else {
+                    	LOG("${preText}Could not delete sensor ${sensorId} from the ${programId.capitalize()} program on thermostat ${deviceId}",3,child,'warn')
+                        return false
+                    }
            			break  
             	}
                 s++
