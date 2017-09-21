@@ -38,11 +38,12 @@
  *	1.2.4 -	Catch OAuth initialization error and suggest probable cause in Log and UI
  *	1.2.5 - Clean up & optimize OAuth error detection and logging
  *	1.2.6 - Repaired add/deleteSensorFromProgram (Ecobee API requires both schedule & climate)
+ *	1.2.7 - Repaired setHold while in an existing Hold: or Auto
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.6" }
+def getVersionNum() { return "1.2.7" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -3244,9 +3245,11 @@ def setHold(child, heating, cooling, deviceId, sendHoldType='indefinite', sendHo
     	LOG("setHold(): Can't set a new hold while in a vacation hold",2,null,'warn')
     	// can't change fan mode while in vacation hold, so silently fail
         return false
-    } else if (currentThermostatHold != '') {
-    	LOG("setHold(): Can't set a new hold over existing hold",2,null,'warn')
-        return false
+    }  else if (currentThermostatHold != '') {
+    	// must resume program first
+        resumeProgram(child, deviceId, true)
+    	//LOG("setHold(): Can't set a new hold over existing hold",2,null,'warn')
+        //return false
     }
 
 	int h = (getTemperatureScale() == "C") ? (cToF(heating) * 10) : (heating * 10)
