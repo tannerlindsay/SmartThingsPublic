@@ -47,10 +47,11 @@
  *	1.2.7  - Added Awake, Auto Home and Auto Away program icons, changed Vacation airplane to solid blue (for consistency)
  *	1.2.8  - Fixed changing setpoint, display of multi-stage heat/cool equipmentOperatingState
  *	1.2.9  - Added Wakeup as synonym for Awake
+ *	1.2.10 - Repaired changing setpoints while in a Hold: or Auto Program
  * 
  */
 
-def getVersionNum() { return "1.2.9" }
+def getVersionNum() { return "1.2.10" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1614,7 +1615,7 @@ void setCoolingSetpoint(Double setpoint) {
 		generateSetpointEvent()
 		generateStatusEvent()
 	} else {
-		LOG("Error setCoolingSetpoint(setpoint)", 2, null, "error") //This error is handled by the connect app
+		LOG("Error setCoolingSetpoint(${setpoint})", 2, null, "error") //This error is handled by the connect app
 	}
 }
 
