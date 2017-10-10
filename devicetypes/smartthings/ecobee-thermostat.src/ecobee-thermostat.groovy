@@ -48,10 +48,11 @@
  *	1.2.8  - Fixed changing setpoint, display of multi-stage heat/cool equipmentOperatingState
  *	1.2.9  - Added Wakeup as synonym for Awake
  *	1.2.10 - Repaired changing setpoints while in a Hold: or Auto Program
+ *	1.2.11 - Fixed slider control to show "°" instead of "C"
  * 
  */
 
-def getVersionNum() { return "1.2.10" }
+def getVersionNum() { return "1.2.11" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -401,13 +402,13 @@ metadata {
 			state "setpoint", action:"lowerSetpoint", icon:"st.thermostat.thermostat-down", defaultState: true
 		}
 		controlTile("heatSliderControl", "device.heatingSetpoint", "slider", height: 1, width: 4, inactiveLabel: false, range: getSliderRange() /* "(15..85)" */ ) {
-			state "setHeatingSetpoint", action:"setHeatingSetpoint",  backgroundColor:"#ff9c14", unit: 'C', defaultState: true
+			state "setHeatingSetpoint", action:"setHeatingSetpoint",  backgroundColor:"#ff9c14", unit: '°', defaultState: true
 		}
 		valueTile("heatingSetpoint", "device.heatingSetpoint", height: 1, width: 1, inactiveLabel: false, decoration: "flat") {
 			state "heat", label:'${currentValue}°', defaultState: true//, unit:"F", backgroundColor:"#ff9c14"
 		}
 		controlTile("coolSliderControl", "device.coolingSetpoint", "slider", height: 1, width: 4, inactiveLabel: false, range: getSliderRange() /* "(15..85)" */ ) {
-			state "setCoolingSetpoint", action:"setCoolingSetpoint", backgroundColor:"#2db9e7", unit: 'C', defaultState: true
+			state "setCoolingSetpoint", action:"setCoolingSetpoint", backgroundColor:"#2db9e7", unit: '°', defaultState: true
 		}
 		valueTile("coolingSetpoint", "device.coolingSetpoint", width: 1, height: 1, inactiveLabel: false, decoration: "flat") {
 			state "cool", label:'${currentValue}°', defaultState: true //, unit:"F", backgroundColor:"#2db9e7"
