@@ -29,9 +29,11 @@
  *  1.0.7 - More minor updates
  *	1.0.8 - Added execution filter on Thermostat Mode
  *	1.2.0 - Sync version number with new holdHours/holdAction support
+ *	1.2.1 - Development Iterations
+ *  1.2.2 - Can now set adjustments based on temperature difference between inside (average) and outside
  *
  */
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.2" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
@@ -68,8 +70,8 @@ def mainPage() {
 		}
         
         if (!settings.tempDisable) {
-        	section(title: "Select Temperature Sensors") {
-            	input(name: "theSensors", title: "Use which temperature sensor(s)", type: "capability.temperatureMeasurement", required: true, multiple: true, submitOnChange: true)
+        	section(title: "Select Indoor Temperature Sensors") {
+            	input(name: "theSensors", title: "Use which indoor temperature sensor(s)", type: "capability.temperatureMeasurement", required: true, multiple: true, submitOnChange: true)
 			}
         
        		section(title: "Fan On Time Automation Configuration") {
@@ -84,6 +86,17 @@ def mainPage() {
             	paragraph("Minimum number of minutes between adjustments.")
             	input(name: "fanAdjustMinutes", type: "number", title: "Time adjustment frequency in minutes (5-60)", required: true, defaultValue: "10", description: "15", range: "5..60")
         	}
+            
+            section(title: "Indoors/Outdoors Temperature Delta") {
+            	paragraph("To apply above adjustments based on inside/outside temperature difference, first select an outside temperature source (indoor temperature will be the average of the sensors selected above).")
+                input(name: "outdoorSensor", title: "Use which outdoor temperature sensor", type: "capability.temperatureMeasurement", required: false, multiple: false, submitOnChange: true)
+                if (outdoorSensor) {
+                	paragraph("Select the indoor/outdoor delta temperature range for which you want to apply the above automated adjustments.")
+                    input(name: "adjRange", type: "enum", title: "Adjust fan on times only when outside delta is in this range", multiple: false, required: true, 
+							options: ["More than 10 degrees warmer", "5 to 10 degrees warmer", "0 to 4.9 degrees warmer", "-4.9 to -0.1 degrees cooler",
+                            			"-10 to -5 degrees cooler", "More than 10 degrees cooler"], submitOnChange: true)
+                }
+            }
        
         	section(title: "Vacation Hold Override") {
         		paragraph("The thermostat's Circulation setting is overridden when a Vacation is in effect. If you would like to automate the Circulation time during a Vacation hold, enable this setting.")
@@ -150,15 +163,25 @@ def initialize() {
     }
     
     // Initialize as if we haven't checked in more than fanAdjustMinutes
-    atomicState.lastAdjustmentTime = now() - (60001 * fanAdjustMinutes.toLong()).toLong() // make sure we run on next deltaHandler event    
+    atomicState.lastAdjustmentTime = now() // - (60001 * fanAdjustMinutes.toLong()).toLong() // make sure we run on next deltaHandler event    
 
-    subscribe(theThermostat, "thermostatOperatingState", modeOrProgramHandler)
-    subscribe(theThermostat, "currentProgram", modeOrProgramHandler)
+    subscribe(theThermostat, "thermostatOperatingState", modeOrProgramHandler)		// so we can see when the fan runs
+    if (thePrograms) subscribe(theThermostat, "currentProgram", modeOrProgramHandler)
     // subscribe(theThermostat, "thermostatHold", modeOrProgramHandler)
     subscribe(location, "routineExecuted", modeOrProgramHandler)    
-    subscribe(location, "mode", modeOrProgramHandler)
+    if (theModes) subscribe(location, "mode", modeOrProgramHandler)
+    if (statModes) subscribe(theThermostat, "thermostatMode", modeOrProgramHandler)
     
     subscribe(theSensors, "temperature", deltaHandler)
+    if (outdoorSensor) {
+    	if (outdoorSensor.id == theThermostat.id) {
+        	LOG("Using Ecobee-supplied external weatherTemperature from ${theThermostat.displayName}.",1,null,'info')
+        	subscribe(theThermostat, "weatherTemperature", deltaHandler)
+        } else {
+        	LOG("Using external temperature from ${outdoorSensor.displayName}.",1,null,'info')
+        	subscribe(outdoorSensor, "temperature", deltaHandler)
+        }
+    }
 
     Integer currentOnTime = theThermostat.currentValue('fanMinOnTime').isNumber() ? theThermostat.currentValue('fanMinOnTime').toInteger() : 0	
     boolean vacationHold = (theThermostat.currentValue("currentProgram") == "Vacation")
@@ -180,17 +203,21 @@ def initialize() {
     		if (vacationHold && vacationOverride) {
         		theThermostat.setVacationFanMinOnTime(settings.minFanOnTime)
             	currentOnTime = settings.minFanOnTime
+                atomicState.lastAdjustmentTime = now() 
         	} else if (!vacationHold) {
     			theThermostat.setFanMinOnTime(settings.minFanOnTime)
             	currentOnTime = settings.minFanOnTime
+                atomicState.lastAdjustmentTime = now() 
         	}
     	} else if (currentOnTime > settings.maxFanOnTime) {
     		if (vacationHold && vacationOverride) {
         		theThermostat.setVacationFanMinOnTime(settings.maxFanOnTime)
         		currentOnTime = settings.maxFanOnTime
+                atomicState.lastAdjustmentTime = now() 
         	} else if (!vacationHold) {
     			theThermostat.setFanMinOnTime(settings.maxFanOnTime)
         		currentOnTime = settings.maxFanOnTime
+                atomicState.lastAdjustmentTime = now() 
         	}
     	} else {
         	atomicState.fanSinceLastAdjustment = true
@@ -215,10 +242,12 @@ def modeOrProgramHandler(evt=null) {
     
 	// Allow adjustments if location.mode OR thermostat.currentProgram match configuration settings
     def isOK = true
-    if (theModes || thePrograms) {
-    	isOK = (theModes && theModes.contains(location.mode)) ? true : ((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgram'))) ? true : false)
+    if (theModes || thePrograms  || statModes) {
+    	isOK = (theModes && theModes.contains(location.mode)) ? true : 
+        			((thePrograms && thePrograms.contains(theThermostat.currentValue('currentProgram'))) ? true : 
+                    	((statModes && statModes.contains(theThermostat.currentValue('thermostatMode'))) ? true : false))
     }
-	atomicState.isOK = isOK
+    atomicState.isOK = isOK
     
     if (evt && (evt.name == "thermostatOperatingState") && !atomicState.fanSinceLastAdjustment) {
     	if ((evt.value != 'idle') && (!evt.value.contains('ending'))) atomicState.fanSinceLastAdjustment = true // [fan only, heating, cooling] but not [idle, pending heat, pending cool]
@@ -230,6 +259,7 @@ def deltaHandler(evt=null) {
 	// Just exit if we are disabled...
 	if(settings.tempDisable == true) {
     	LOG("temporarily disabled as per request.", 2, null, "warn")
+        atomicState.amIRunning = false
     	return true
     }
     
@@ -243,36 +273,45 @@ def deltaHandler(evt=null) {
     
 	def vacationHold = ( currentProgram == 'Vacation')
 	if (!vacationOverride && vacationHold) {
-    	LOG("${theThermostat} is in Vacation mode, but not configured to override Vacation fanMinOnTime, returning", 4, "", 'warn')
+    	LOG("${theThermostat} is in Vacation mode, but not configured to override Vacation fanMinOnTime, returning", 3, "", 'warn')
         atomicState.amIRunning = false
         return
     }
     
 	if (evt) {
-    	LOG("deltaHandler() device: ${evt.device}, name: ${evt.name}, value: ${evt.value}",3,null,'trace')
     	if (evt.name == 'currentProgram') {
-        	LOG("deltaHandler() Program Changed to my Program (${evt.value})",3,null,'info')
+        	LOG("Thermostat Program changed to my Program (${evt.value})",3,null,'info')
         } else if (evt.name == 'mode') {
-        	LOG("deltaHandler() Location Mode Changed to my Mode (${evt.value})",3,null,'info')
+        	LOG("Location Mode changed to my Mode (${evt.value})",3,null,'info')
+        } else {
+        	LOG("Called with ${evt.device} ${evt.name} ${evt.value}",3,null,'trace')
         }
         if (settings.minFanOnTime == settings.maxFanOnTime) {
         	if (theThermostat.currentValue('fanMinOnTime').toInteger() == settings.minFanOnTime.toInteger()) {
-    			// LOG('deltaHandler() min==max==fanMinOnTime...skipping, nothing to do',2,null,'info')
+    			LOG('Configured min==max==fanMinOnTime, nothing to do, skipping...',2,null,'info')
+                atomicState.amIRunning = false
         		return // nothing to do
             } else {
-                LOG("deltaHandler() min==max, setting fanMinOnTime(${settings.minFanOnTime})",3,null,'info')
+                LOG("Configured min==max, setting fanMinOnTime(${settings.minFanOnTime})",2,null,'info')
                 theThermostat.setFanMinOnTime(settings.minFanOnTime)
+                atomicState.amIRunning = false
                 return
             }
     	}
-        LOG("deltaHandler() entered with event ${evt.name}: ${evt.value}", 4, "", 'trace')
+        // LOG("Entered with event ${evt.name}: ${evt.value}", 4, "", 'trace')
     } else {
-    	LOG("deltaHandler() called directly", 4, "", 'trace')
+    	LOG("Called directly", 4, "", 'trace')
     }
 
 	// reset the amIRunning sequencer if it gets hung for more than an hour
-	if (atomicState.lastCheckTime && ((now() - atomicState.lastCheckTime) > 3600000)) atomicState.amIRunning = false
-    if (atomicState.amIRunning) {return} else {atomicState.amIRunning = true}
+    def howLong = atomicState.lastCheckTime ? (now() - atomicState.lastCheckTime) : 333333
+	if (howLong > 300000) atomicState.amIRunning = false
+    if (atomicState.amIRunning) {
+    	LOG("An instance of ${app.name} is already running (${howLong} ms) , skipping...",3,null,'trace')
+        return
+    } else {
+    	atomicState.amIRunning = true
+    }
     atomicState.lastCheckTime = now()
     
     // parse temps - ecobee sensors can return "unknown", others may return
@@ -287,13 +326,62 @@ def deltaHandler(evt=null) {
             i = i + 1
         }
     }
-    Double avg = total / i.toDouble()
-    
-    LOG("Current temperature readings: ${temps}, average is ${String.format("%.3f",avg)}", 4, "", 'trace')
-    if (temps.size() < 2) {				// ignore if we don't have enough valid data
+    Double avg = 0.0
+    if (i > 1) {
+    	avg = (total / i.toDouble()).round(2)
+	    LOG("Current temperature readings: ${temps}, average is ${String.format("%.2f",avg)}°", 4, "", 'trace')
+    } else {
     	LOG("Only recieved ${temps.size()} valid temperature readings, skipping...",3,"",'warn')
     	atomicState.amIRunning = false
         return 
+    }
+    
+    // Skip if the in/out delta doesn't match our settings
+    if (outdoorSensor) {
+    	def outTemp = null
+        if (outdoorSensor.id == theThermostat.id) {
+        	outTemp = theThermostat.currentValue("weatherTemperature")
+            LOG("Using ${theThermostat.displayName}'s weatherTemperature (${outTemp}°)",4,null,"info")
+        } else {
+        	outTemp = outdoorSensor.currentValue("temperature")
+            LOG("Using ${outdoorSensor.displayName}'s temperature (${outTemp}°)",4,null,"info")
+        }
+        Double inoutDelta = null
+        if (outTemp.isNumber()) {
+        	inoutDelta = (outTemp.toDouble() - avg).round(2)
+        }
+        if (inoutDelta == null) {
+        	LOG("Invalid outdoor temperature, skipping...",1,"","warn")
+            atomicState.amIRunning = false
+        	return
+        }
+        LOG("Outside temperature is currently ${outTemp}°, inside temperature average is ${String.format("%.2f",avg)}°",4,null,'trace')
+        // More than 10 degrees warmer", "5 to 10 degrees warmer", "0 to 4.9 degrees warmer", "-4.9 to -0.1 degrees cooler", -10 to -5 degrees cooler", "More than 10 degrees cooler"
+    	def inRange = false
+        if (adjRange.endsWith('warmer')) {
+        	if (adjRange.startsWith('M')) {
+            	if (inoutDelta > 10.0) { inRange = true }
+            } else if (adjRange.startsWith('5')) {
+            	if ((inoutDelta <= 10.0) && (inoutDelta >= 5.0)) { inRange = true }
+            } else { // 0-4.9
+            	if ((inoutDelta < 5.0) && (inoutDelta >= 0.0)) { inRange = true }
+            }
+        } else {
+        	if (adjRange.startsWith('M')) {
+            	if (inoutDelta < -10.0) { inRange = true }
+            } else if (adjRange.startsWith('-1')) {
+            	if ((inoutDelta <= -5.0) && (inoutDelta >= -10.0)) { inRange = true }
+            } else { // -4.9 -0.1
+            	if ((inoutDelta > -5.0) && (inoutDelta < 0.0)) { inRange = true }
+            }
+        }
+        if (!inRange) {
+        	LOG("In/Out temperature delta (${inoutDelta}°) not in range (${adjRange}), skipping...",4,"","trace")
+            atomicState.amIRunning = false
+            return
+        } else {
+        	LOG("In/Out temperature delta (${inoutDelta}°) is in range (${adjRange}), adjusting...",4,"","trace")
+        }
     }
     
     Double min = temps.min().toDouble().round(2)
@@ -306,13 +394,13 @@ def deltaHandler(evt=null) {
     atomicState.minDelta = atomicState.minDelta.toDouble() < delta ? atomicState.minDelta: delta
     
     // Makes no sense to change fanMinOnTime while heating or cooling is running - take action ONLY on events while idle or fan is running
-/*    def statState = theThermostat.currentValue("thermostatOperatingState")
+    def statState = theThermostat.currentValue("thermostatOperatingState")
     if ((statState != 'idle') && (statState != 'fan only')) {
     	LOG("${theThermostat} is ${statState}, no adjustments made", 4, "", 'trace' )
         atomicState.amIRunning = false
         return
     }
-*/
+
     if (atomicState.lastAdjustmentTime) {
         def timeNow = now()
         def minutesLeft = fanAdjustMinutes - ((timeNow - atomicState.lastAdjustmentTime) / 60000).toInteger()
@@ -332,7 +420,7 @@ def deltaHandler(evt=null) {
 			newOnTime = settings.maxFanOnTime
 		}
 		if (currentOnTime != newOnTime) {
-			LOG("Temperature delta is ${String.format("%.2f",delta)}/${deltaTemp}, increasing circulation time for ${theThermostat} to ${newOnTime} min/hr",3,"",'info')
+			LOG("Temperature delta is ${String.format("%.2f",delta)}°/${String.format("%.2f",deltaTemp.toDouble())}°, increasing circulation time for ${theThermostat} to ${newOnTime} min/hr",3,"",'info')
 			if (vacationHold) {
             	theThermostat.setVacationFanMinOnTime(newOnTime)
             } else {
@@ -345,16 +433,16 @@ def deltaHandler(evt=null) {
             return
 		}
 	} else {
-        Double target = (getTemperatureScale() == "C") ? 0.55 : 1.0
+        // Double target = (getTemperatureScale() == "C") ? 0.55 : 1.0
         //atomicState.target = target
-        if (target > deltaTemp.toDouble()) target = (deltaTemp.toDouble() * 0.66667).round(2)	// arbitrary - we have to be less than deltaTemp
-    	if (delta <= target) {			// start adjusting back downwards once we get within 1F or .5556C
+        // if (target > deltaTemp.toDouble()) target = (deltaTemp.toDouble() * 0.66667).round(2)	// arbitrary - we have to be less than deltaTemp
+    	// if (delta <= target) {			// start adjusting back downwards once we get within 1F or .5556C
 			newOnTime = currentOnTime - fanOnTimeDelta
 			if (newOnTime < settings.minFanOnTime) {
 				newOnTime = settings.minFanOnTime
 			}
             if (currentOnTime != newOnTime) {
-           		LOG("Temperature delta is ${String.format("%.2f",delta)}/${String.format("%.2f",target)}, decreasing circulation time for ${theThermostat} to ${newOnTime} min/hr",3,"",'info')
+           		LOG("Temperature delta is ${String.format("%.2f",delta)}°/${String.format("%.2f",deltaTemp.toDouble())}°, decreasing circulation time for ${theThermostat} to ${newOnTime} min/hr",3,"",'info')
 				if (vacationHold) {
                 	theThermostat.setVacationFanMinOnTime(newOnTime)
                 } else {
@@ -366,7 +454,7 @@ def deltaHandler(evt=null) {
                 atomicState.amIRunning = false
                 return
             }
-		}
+		// }
 	}
 	LOG("No adjustment made",4,"",'trace')
     atomicState.amIRunning = false
