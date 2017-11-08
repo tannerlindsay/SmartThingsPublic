@@ -49,10 +49,11 @@
  *	1.2.9  - Added Wakeup as synonym for Awake
  *	1.2.10 - Repaired changing setpoints while in a Hold: or Auto Program
  *	1.2.11 - Fixed slider control to show "°" instead of "C"
+ *	1.2.12 - Work around Google Home erroneously sending setpoint requests in C when stat is in F mode
  * 
  */
 
-def getVersionNum() { return "1.2.11" }
+def getVersionNum() { return "1.2.12" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -431,6 +432,7 @@ metadata {
             state "Sleep", action:"noOp", nextState:'Sleep', label: 'Sleep', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_asleep_blue.png"
             state "Awake", action:"noOp", nextState:'Awake', label: 'Awake', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
             state "Wakeup", action:"noOp", nextState:'Wakeup', label: 'Wakeup', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
+            state "Awake", action:"noOp", nextState:'Awake', label: 'Awake', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake.png"
 			state "Auto", action:"noOp", nextState:'Auto', label: 'Auto', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
             state "Auto Away", action:"noOp", nextState:'Auto Away', label: 'Auto Away', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_auto_away.png" // Fix to auto version
             state "Auto Home", action:"noOp", nextState:'Auto Home', label: 'Auto Home', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_auto_home.png" // Fix to auto
@@ -445,6 +447,8 @@ metadata {
       		state "Vacation", action: "noOp", nextState:'Vacation', label: 'Vacation', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_vacation_blue_solid.png"
       		state "Offline", action: "noOp", nextState:'Offline', label: 'Offline', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_black_dot.png"
             state "Hold: Temp", action: 'noOp', nextState: 'Hold: Temp', label: 'Hold: Temp', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/thermometer_hold.png"
+            state "Hold: Wakeup", action:"noOp", nextState:'Hold: Wakeup', label: 'Hold: Wakeup', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake_blue.png"
+            state "Hold: Awake", action:"noOp", nextState:'Hold: Awake', label: 'Hold: Awake', icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_awake_blue.png"
             state "default", action:"noOp", nextState: 'default', label: '${currentValue}', defaultState: true, icon: "https://raw.githubusercontent.com/SANdood/Ecobee/master/icons/schedule_generic_chair_blue.png"
 		}        
         
@@ -1507,7 +1511,13 @@ void setHeatingSetpoint(Double setpoint) {
         return
     }
 
-	LOG("setHeatingSetpoint() request with setpoint value = ${setpoint}", 4)
+	LOG("setHeatingSetpoint() request with setpoint value = ${setpoint}", 2, null, 'info')
+    
+    if ((setpoint < 35.0) /* && (getTemperatureScale() != 'C') */ /* && (device.currentValue('thermostatMode') == 'Auto') */ ) {	// Hello, Google hack - seems to request C when stat is in Auto mode
+    	setpoint = cToF(setpoint).toDouble().round(1)
+        LOG ("setHeatingSetpoint() converted apparent C setpoint value to ${setpoint} F", 2, null, 'info')
+    }
+    
 
 	def heatingSetpoint = setpoint
 	def coolingSetpoint = device.currentValue("coolingSetpoint").toDouble()
@@ -1568,7 +1578,12 @@ void setCoolingSetpoint(Double setpoint) {
         generateQuickEvent('coolingSetpoint', device.currentValue('coolingSetpoint').toString())
         return
     }
-	LOG("setCoolingSetpoint() request with setpoint value = ${setpoint}", 4)
+	LOG("setCoolingSetpoint() request with setpoint value = ${setpoint}", 2, null, 'info')
+    
+    if ((setpoint < 35.0) /* && (getTemperatureScale() != 'C') */ /* && (device.currentValue('thermostatMode') == 'Auto') */ ) {	// Hello, Google hack - seems to request C when stat is in Auto mode
+    	setpoint = cToF(setpoint).toDouble().round(1)
+        LOG ("setCoolingSetpoint() converted apparent C setpoint value to ${setpoint} F", 2, null, 'info')
+    }
 
 	def heatingSetpoint = device.currentValue("heatingSetpoint").toDouble()
 	def coolingSetpoint = setpoint
