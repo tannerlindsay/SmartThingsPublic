@@ -23,7 +23,7 @@
  *	1.2.0 - Sync version number with new holdHours/holdAction support
  *	1.2.1 - Protect against LOG type errors
  */
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.1" }
 private def getVersionLabel() { return "ecobee Smart Room Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
