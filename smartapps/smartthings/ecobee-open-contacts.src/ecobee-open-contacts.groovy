@@ -25,10 +25,11 @@
  *	1.2.0 	- 	Sync version number with new holdHours/holdAction support
  *	1.2.1	-	Changed order of LOGging
  *	1.2.2	- 	Include device names in notifications
+ *	1.2.3	-	Protect against LOG type errors
  *
  */
  
-def getVersionNum() { return "1.2.2" }
+def getVersionNum() { return "1.2.3" }
 private def getVersionLabel() { return "ecobee Open Contacts version ${getVersionNum()}" }
 
 definition(
@@ -404,6 +405,7 @@ private def sendNotification(message) {
 
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
 	String msg = "${app.label} ${message}"
+	if (logType == null) logType = 'debug'
     log."${logType}" message
 	parent.LOG(msg, level, null, logType, event, displayEvent)
 }
