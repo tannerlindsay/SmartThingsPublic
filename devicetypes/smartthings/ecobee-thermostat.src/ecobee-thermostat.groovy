@@ -52,10 +52,11 @@
  *	1.2.12 - Work around Google Home erroneously sending setpoint requests in C when stat is in F mode
  *	1.2.13 - Added commands for Wakeup & Awake climates (for Smart/SI thermostats)
  *	1.2.14 - Workaround for program settings
+ *	1.2.15 - Fixed typo that caused program changes to fail when logging level > 3
  * 
  */
 
-def getVersionNum() { return "1.2.14" }
+def getVersionNum() { return "1.2.15" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -280,8 +281,8 @@ metadata {
 		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
         	// Use the first version below to show Temperature in Device History - will also show Large Temperature when device is default for a room
             // 		The second version will show icon in device lists
-			//state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true)
-            state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
+			state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true)
+            //state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
 		}
         
         // these are here just to get the colored icons to diplay in the Recently log in the Mobile App
@@ -1727,7 +1728,7 @@ void auto() {
 // Thermostat Program (aka Climates) Commands
 // Program/Climates CANNOT be changed while in Vacation mode
 // ***************************************************************************
-void setThermostatProgram(String program, String holdType="", holdHours=2) {
+void setThermostatProgram(String program, holdType=null, holdHours=2) {
 	// N.B. if holdType is provided, it must be one of the valid parameters for the Ecobee setHold call (indefinite, nextTransition, holdHours). dateTime not currently supported
 	def currentThermostatHold = device.currentValue('thermostatHold')
     if (currentThermostatHold == 'vacation') {
@@ -1741,12 +1742,14 @@ void setThermostatProgram(String program, String holdType="", holdHours=2) {
     	LOG("setThermostatProgram(${program}) - invalid argument",2,this,'warn')
         return
     }
-    LOG("setThermostatProgram(${program}, ${holdType}, ${holdHours})", 4,null,trace)
+   	
 	def deviceId = getDeviceId()    
-	
+	LOG("setThermostatProgram(${program}, ${holdType}, ${holdHours})", 4,null,'trace')
+    
     def sendHoldType = null
     def sendHoldHours = null
     if (holdType != "") {
+    	
     	sendHoldType = holdType
         if (holdType == 'holdHours') sendHoldHours = holdHours
     } else { 
@@ -1756,8 +1759,8 @@ void setThermostatProgram(String program, String holdType="", holdHours=2) {
     		sendHoldType = 'holdHours'
 		}
     }
-    
     refresh()		// need to know if scheduled program changed recently
+    
     
     def currentProgram = device.currentValue('currentProgram')
     def currentProgramName = device.currentValue('currentProgramName')
@@ -2620,6 +2623,8 @@ private debugLevel(level=3) {
 
 private def LOG(message, level=3, child=null, logType="debug", event=false, displayEvent=false) {
 	def prefix = debugLevel(5) ? 'LOG: ' : ''
+    if (logType == null) logType = 'debug'
+    
 	if (debugLevel(level)) { 
     	log."${logType}" "${prefix}${message}"
         if (event) { debugEvent(message, displayEvent) }        
