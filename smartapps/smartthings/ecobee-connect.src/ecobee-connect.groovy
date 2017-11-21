@@ -39,11 +39,12 @@
  *	1.2.5 - Clean up & optimize OAuth error detection and logging
  *	1.2.6 - Repaired add/deleteSensorFromProgram (Ecobee API requires both schedule & climate)
  *	1.2.7 - Repaired setHold while in an existing Hold: or Auto
+ *	1.2.8 - Updates to fix logging for child.devices
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.7" }
+def getVersionNum() { return "1.2.8" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -3082,7 +3083,7 @@ private refreshAuthToken(child=null) {
 }
 
 def resumeProgram(child, String deviceId, resumeAll=true) {
-	LOG("Entered resumeProgram for deviceId: ${deviceId} with child ${child}", 2, child, 'trace')
+	LOG("Entered resumeProgram for deviceId: ${deviceId} with child: ${child.device?.displayName}", 2, child, 'trace')
 	def result = true
     boolean debugLevelFour = debugLevel(4)
     boolean debugLevelThree = debugLevel(3)
@@ -3385,7 +3386,7 @@ def setProgram(child, program, String deviceId, sendHoldType='indefinite', sendH
 }
 
 def addSensorToProgram(child, deviceId, sensorId, programId) {
-	LOG("addSensorToProgram(${child.device.displayName},${deviceId},${sensorId},${programId})",4,child,'trace')
+	LOG("addSensorToProgram(${child.device?.displayName},${deviceId},${sensorId},${programId})",4,child,'trace')
 	String preText = getDebugLevel() <= 2 ? '' : 'addSensorToProgram() - '
     
     // we basically have to edit the program object in place, and then return the entire thing back to the Ecobee API
@@ -3430,7 +3431,7 @@ def addSensorToProgram(child, deviceId, sensorId, programId) {
 }
 
 def deleteSensorFromProgram(child, deviceId, sensorId, programId) {
-	LOG("deleteSensorFromProgram(${child.device.displayName},${deviceId},${sensorId},${programId})",4,child,'trace')
+	LOG("deleteSensorFromProgram(${child.device?.displayName},${deviceId},${sensorId},${programId})",4,child,'trace')
     String preText = getDebugLevel() <= 2 ? '' : 'deleteSensorFromProgram() - '
     
 	def program = atomicState.program[deviceId]
@@ -3887,7 +3888,7 @@ private String childType(child) {
 }
 
 private def getFanMinOnTime(child) {
-	if (debugLevel(4)) LOG("getFanMinOnTime() - Looking up current fanMinOnTime for ${child.device.displayName}", 4, child)
+	if (debugLevel(4)) LOG("getFanMinOnTime() - Looking up current fanMinOnTime for ${child.device?.displayName}", 4, child)
     String devId = getChildThermostatDeviceIdsString(child)
     LOG("getFanMinOnTime() Looking for ecobee thermostat ${devId}", 5, child, "trace")
     
@@ -3897,7 +3898,7 @@ private def getFanMinOnTime(child) {
 }
 
 private String getHVACMode(child) {
-	if (debugLevel(4)) LOG("Looking up current hvacMode for ${child.device.displayName}", 4, child)
+	if (debugLevel(4)) LOG("Looking up current hvacMode for ${child.device?.displayName}", 4, child)
     String devId = getChildThermostatDeviceIdsString(child)
     // LOG("getHVACMode() Looking for ecobee thermostat ${devId}", 5, child, "trace")
     
