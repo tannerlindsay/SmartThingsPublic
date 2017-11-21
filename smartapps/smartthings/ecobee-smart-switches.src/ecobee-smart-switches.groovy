@@ -16,8 +16,9 @@
  *	1.0.2 - Added option to limit operation to certain SmartThings Modes
  *	1.0.3 - Updated settings and TempDisable handling
  *	1.2.0 - Sync version number with new holdHours/holdAction support
+ *	1.2.1 - Protect agsinst LOG type errors
  */
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.1" }
 private def getVersionLabel() { return "ecobee Smart Switches Version ${getVersionNum()}" }
 
 definition(
@@ -199,6 +200,7 @@ private def dimmersOn( theDimmers ) {
 
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
+	if (logType == null) logType = 'debug'
 	log."${logType}" message
 	message = "${app.label} ${message}"
 	parent?.LOG(message, level, null, logType, event, displayEvent)
