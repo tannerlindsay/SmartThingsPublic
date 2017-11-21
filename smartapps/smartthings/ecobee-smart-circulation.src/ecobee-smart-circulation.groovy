@@ -31,9 +31,10 @@
  *	1.2.0 - Sync version number with new holdHours/holdAction support
  *	1.2.1 - Development Iterations
  *  1.2.2 - Can now set adjustments based on temperature difference between inside (average) and outside
+ *	1.2.3 - Protect against LOG type errors
  *
  */
-def getVersionNum() { return "1.2.2" }
+def getVersionNum() { return "1.2.3" }
 private def getVersionLabel() { return "ecobee Smart Circulation Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
@@ -463,6 +464,7 @@ def deltaHandler(evt=null) {
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
 	message = "${app.label} ${message}"
+	if (logType == null) logType = 'debug'
 	parent.LOG(message, level, null, logType, event, displayEvent)
     log."${logType}" message
 }
