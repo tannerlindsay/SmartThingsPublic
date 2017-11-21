@@ -50,10 +50,12 @@
  *	1.2.10 - Repaired changing setpoints while in a Hold: or Auto Program
  *	1.2.11 - Fixed slider control to show "°" instead of "C"
  *	1.2.12 - Work around Google Home erroneously sending setpoint requests in C when stat is in F mode
+ *	1.2.13 - Added commands for Wakeup & Awake climates (for Smart/SI thermostats)
+ *	1.2.14 - Workaround for program settings
  * 
  */
 
-def getVersionNum() { return "1.2.12" }
+def getVersionNum() { return "1.2.14" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -94,12 +96,14 @@ metadata {
         command "home"
         command "present"
 
-// Unfortunately we cannot overload the internal definition of 'sleep()', and calling this will silently fail (actually, it does a
+// Unfortunately we cannot overload the internal Java/Groovy definition of 'sleep()', and calling this will silently fail (actually, it does a
 // "sleep(0)")
 //		command "sleep"
         command "asleep"
         command "night"				// this is probably the appropriate SmartThings device command to call, matches ST mode
         command "away"
+        command "wakeup"
+        command "awake"
         
         command "fanOff"  			// Missing from the Thermostat standard capability set
         command "noOp" 				// Workaround for formatting issues 
@@ -276,8 +280,8 @@ metadata {
 		valueTile("temperature", "device.temperature", width: 2, height: 2, canChangeIcon: true, decoration: 'flat') {
         	// Use the first version below to show Temperature in Device History - will also show Large Temperature when device is default for a room
             // 		The second version will show icon in device lists
-			//state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true)
-            state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
+			state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true)
+            //state("default", label:'${currentValue}°', unit:"F", backgroundColors: getTempColors(), defaultState: true, icon: 'st.Weather.weather2')
 		}
         
         // these are here just to get the colored icons to diplay in the Recently log in the Mobile App
@@ -1723,7 +1727,7 @@ void auto() {
 // Thermostat Program (aka Climates) Commands
 // Program/Climates CANNOT be changed while in Vacation mode
 // ***************************************************************************
-void setThermostatProgram(String program, holdType=null, holdHours=2) {
+void setThermostatProgram(String program, String holdType="", holdHours=2) {
 	// N.B. if holdType is provided, it must be one of the valid parameters for the Ecobee setHold call (indefinite, nextTransition, holdHours). dateTime not currently supported
 	def currentThermostatHold = device.currentValue('thermostatHold')
     if (currentThermostatHold == 'vacation') {
@@ -1742,7 +1746,7 @@ void setThermostatProgram(String program, holdType=null, holdHours=2) {
 	
     def sendHoldType = null
     def sendHoldHours = null
-    if (holdType) {
+    if (holdType != "") {
     	sendHoldType = holdType
         if (holdType == 'holdHours') sendHoldHours = holdHours
     } else { 
@@ -1834,6 +1838,8 @@ void night() {
     LOG('night()', 5, null, 'trace')
     setThermostatProgram('Sleep')
 }
+void wakeup() { setThermostatProgram('Wakeup') }	// Not all thermostats have these two - setTP will validate
+void awake() { setThermostatProgram('Awake') }
 void resumeProgram(resumeAll=true) {
 	String currentProgramName = device.currentValue('currentProgramName')
 	resumeProgramInternal(resumeAll)
