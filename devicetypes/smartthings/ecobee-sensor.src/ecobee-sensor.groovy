@@ -27,10 +27,11 @@
  *	1.2.0  - Sync revision number with new holdHours/holdAction updates
  *	1.2.1  - Reinstated default icon for default Temperature tile
  *	1.2.2  - Added new Program icons, Awake/Wakeup attributes (not currently displayed)
+ *	1.2.3  - Protect against LOG type errors
  *
  */
 
-def getVersionNum() { return "1.2.2" }
+def getVersionNum() { return "1.2.3" }
 private def getVersionLabel() { return "Ecobee Sensor Version ${getVersionNum()}" }
 private def programIdList() { return ["home","away","sleep"] } // we only support these program IDs for addSensorToProgram()
 
@@ -391,6 +392,7 @@ private debugLevel(level=3) {
 private def LOG(message, level=3, child=null, logType="debug", event=false, displayEvent=false) {
 	def prefix = ""
 	if ( parent.settings.debugLevel?.toInteger() == 5 ) { prefix = "LOG: " }
+	if (logType == null) logType = 'debug'
 	if ( debugLevel(level) ) { 
     	log."${logType}" "${prefix}${message}"
         if (event) { debugEvent(message, displayEvent) }        
