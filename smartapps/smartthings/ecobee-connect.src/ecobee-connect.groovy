@@ -40,11 +40,12 @@
  *	1.2.6 - Repaired add/deleteSensorFromProgram (Ecobee API requires both schedule & climate)
  *	1.2.7 - Repaired setHold while in an existing Hold: or Auto
  *	1.2.8 - Updates to fix logging for child.devices
+ *	1.2.9 - Protect against LOG type errors
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.8" }
+def getVersionNum() { return "1.2.9" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -3587,6 +3588,7 @@ private def LOG(message, level=3, child=null, String logType='debug', event=fals
 	def dbgLevel = debugLevel(level)
     if (!dbgLevel) return 		// let's not waste CPU cycles if we don't have to...
     
+    if (logType == null) logType = 'debug'
 	def prefix = ""
     def logTypes = ['error', 'debug', 'info', 'trace', 'warn']
     
