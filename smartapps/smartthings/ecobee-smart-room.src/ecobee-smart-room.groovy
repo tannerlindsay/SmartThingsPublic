@@ -21,6 +21,7 @@
  *	1.0.2 - Fixed initialization
  *	1.0.3 - Updated settings and TempDisable handling
  *	1.2.0 - Sync version number with new holdHours/holdAction support
+ *	1.2.1 - Protect against LOG type errors
  */
 def getVersionNum() { return "1.2.0" }
 private def getVersionLabel() { return "ecobee Smart Room Version ${getVersionNum()}" }
@@ -507,6 +508,7 @@ private def NOTIFY(message) {
 
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
 	message = "${app.label} ${message}"
+	if (logType == null) logType = 'debug'
 	parent?.LOG(message, level, null, logType, event, displayEvent)
     log."${logType}" message
 }
