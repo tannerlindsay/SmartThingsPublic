@@ -31,8 +31,9 @@
  * 1.0.8 - Allow override/cancellation of Vacation Hold (e.g., came home early)
  * 1.2.0 - Update to support holdHours and thermostat holdAction
  * 1.2.1 - Corrected setHold logic 
+ * 1.2.2 - Protect against LOG type errors
  */
-def getVersionNum() { return "1.2.1" }
+def getVersionNum() { return "1.2.2" }
 private def getVersionLabel() { return "ecobee Routines Version ${getVersionNum()}" }
 
 
@@ -517,6 +518,7 @@ def whatHoldType(statDevice) {
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
 	def messageLbl = "${app.label} ${message}"
+	if (logType == null) logType = 'debug'
 	parent.LOG(messageLbl, level, null, logType, event, displayEvent)
     log."${logType}" message
 }
