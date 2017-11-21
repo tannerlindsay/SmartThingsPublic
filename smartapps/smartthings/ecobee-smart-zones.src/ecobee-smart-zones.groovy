@@ -16,9 +16,10 @@
  *	1.0.1 - Edits to LOG and setup for consistency
  *	1.0.2 - Updated settings and TempDisable handling
  *  1.2.0 - Sync version number with new holdHours/holdAction support
+ *	1.2.1 - Protect against LOG type errors
  *
  */
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.1" }
 private def getVersionLabel() { return "ecobee smartZones Version ${getVersionNum()}" }
 
 definition(
@@ -144,6 +145,7 @@ def masterFanStateHandler(evt=null) {
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
 	message = "${app.label} ${message}"
+	if (logType == null) logType = 'debug'
 	parent.LOG(message, level, null, logType, event, displayEvent)
     log."${logType}" message
 }
