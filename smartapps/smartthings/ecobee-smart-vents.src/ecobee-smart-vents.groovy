@@ -22,8 +22,9 @@
  *	1.0.8 - Fixed setpoint settings, added current status displays in setup
  *	1.0.9 - Close the vents if idle while in cool Mode
  *  1.2.0 - Sync version number with new holdHours/holdAction support
+ *	1.2.1 - Protect against LOG type errors
  */
-def getVersionNum() { return "1.2.0" }
+def getVersionNum() { return "1.2.1" }
 private def getVersionLabel() { return "ecobee Smart Vents Version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
 
@@ -276,6 +277,7 @@ private def generateSensorsEvents( Map dataMap ) {
 
 // Helper Functions
 private def LOG(message, level=3, child=null, logType="debug", event=true, displayEvent=true) {
+	if (logType == null) logType = 'debug'
 	log."${logType}" message
 	message = "${app.label} ${message}"
 	parent?.LOG(message, level, null, logType, event, displayEvent)
