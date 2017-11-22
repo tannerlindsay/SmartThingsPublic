@@ -53,10 +53,11 @@
  *	1.2.13 - Added commands for Wakeup & Awake climates (for Smart/SI thermostats)
  *	1.2.14 - Workaround for program settings
  *	1.2.15 - Fixed typo that caused program changes to fail when logging level > 3
+ *	1.2.16 - Fixed another typo in setThermostatProgram
  * 
  */
 
-def getVersionNum() { return "1.2.15" }
+def getVersionNum() { return "1.2.16" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1748,8 +1749,7 @@ void setThermostatProgram(String program, holdType=null, holdHours=2) {
     
     def sendHoldType = null
     def sendHoldHours = null
-    if (holdType != "") {
-    	
+    if (holdType && (holdType != "")) {
     	sendHoldType = holdType
         if (holdType == 'holdHours') sendHoldHours = holdHours
     } else { 
