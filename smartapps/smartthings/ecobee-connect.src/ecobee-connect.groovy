@@ -41,11 +41,12 @@
  *	1.2.7 - Repaired setHold while in an existing Hold: or Auto
  *	1.2.8 - Updates to fix logging for child.devices
  *	1.2.9 - Protect against LOG type errors
+ *	1.2.10- Handle postalCode=0, display correct icon for emergency heat (with heat pump)
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.9" }
+def getVersionNum() { return "1.2.10" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -2434,7 +2435,7 @@ def updateThermostatData() {
 		Double tempHeatDiff = 0.0
         Double tempCoolDiff = 0.0
 
-		if (forcePoll || thermostatUpdated) {
+		if (forcePoll || thermostatUpdated || runtimeUpdated ) {
             tempHeatDiff = statSettings.stage1HeatingDifferentialTemp.toDouble() / 10.0
             tempCoolDiff = statSettings.stage1CoolingDifferentialTemp.toDouble() / 10.0
             
@@ -2714,7 +2715,7 @@ def updateThermostatData() {
                 equipOpStat = 'heating'
             	if (smartRecovery) thermOpStat = 'heating (smart recovery)'
 				// Figure out which stage we are running now
-                if 		(equipStatus.contains('t1')) 	{ equipOpStat = (auxHeatMode) ? 'emergency' : (heatStages > 1) ? 'heat 1' : 'heating' }
+                if 		(equipStatus.contains('t1')) 	{ equipOpStat = ((auxHeatMode) ? 'emergency' : ((heatStages > 1) ? 'heat 1' : 'heating')) }
 				else if (equipStatus.contains('t2')) 	{ equipOpStat = 'heat 2' }
 				else if (equipStatus.contains('t3')) 	{ equipOpStat = 'heat 3' }
 				else if (equipStatus.contains('p2')) 	{ equipOpStat = 'heat pump 2' }
@@ -3517,6 +3518,7 @@ private def sendJson(child=null, String jsonBody) {
 		} // HttpPost
 	} catch (groovyx.net.http.HttpResponseException e) {
     	result = false // this thread failed...hopefully we can succeed after we refresh the auth_token
+        LOG("sendJson() ${e.statusCode} ${e.response.data.status.code}",3,null,"trace")
         if ((e.statusCode == 500) && (e.response.data.status.code == 14)) {
         	LOG("sendJson() - HttpResponseException occurred: Auth_token has expired", 3, null, "info")
             // atomicState.savedActionJsonBody = jsonBody
@@ -3537,7 +3539,7 @@ private def sendJson(child=null, String jsonBody) {
                 LOG( "sendJson() - Auth_token refresh failed", 1, null, 'error') 
             }
         } else {
-        	LOG("sendJson() - HttpResponseException occurred. Exception info: ${e} StatusCode: ${e.statusCode}", 1, null, "error")
+        	LOG("sendJson() - HttpResponseException occurred. Exception info: ${e} StatusCode: ${e.statusCode} || ${e.response.data.status.code}", 1, null, "error")
         }
     } catch(Exception e) {
     	// Might need to further break down 
@@ -3800,7 +3802,7 @@ private String getZipCode() {
         settings.thermostats?.each{
         	String tid = it.split(/\./).last()
             String statZipCode = (atomicState.statLocation && atomicState.statLocation[tid]) ? atomicState.statLocation[tid].postalCode : ''
-            if (statZipCode != '') {
+            if ((statZipCode != '') && (statZipCode.isNumber() && (statZipCode.toInteger() != 0))) {
             	// let's see how many postalCodes we are using across all the thermostats
         		if (!zipCodes || (!zipCodes.contains(statZipCode))) zipCodes += [statZipCode]
             	// if we have the Thermostat Location, use the postalCode from the thermostat
@@ -3813,6 +3815,7 @@ private String getZipCode() {
         } 
     }
     atomicState.zipCode = myZipCode
+    LOG("getZipCode() returning ${myZipCode}",3,null,'info')
     return myZipCode
 }
 
