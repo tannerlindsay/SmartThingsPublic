@@ -54,10 +54,11 @@
  *	1.2.14 - Workaround for program settings
  *	1.2.15 - Fixed typo that caused program changes to fail when logging level > 3
  *	1.2.16 - Fixed another typo in setThermostatProgram
+ *	1.2.17 - Fixed CtoF/FtoC conversions in setHeat/CoolingSetpoint()
  * 
  */
 
-def getVersionNum() { return "1.2.16" }
+def getVersionNum() { return "1.2.17" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -1519,24 +1520,25 @@ void setHeatingSetpoint(Double setpoint) {
 
 	LOG("setHeatingSetpoint() request with setpoint value = ${setpoint}", 2, null, 'info')
     
-    if ((setpoint < 35.0) /* && (getTemperatureScale() != 'C') */ /* && (device.currentValue('thermostatMode') == 'Auto') */ ) {	// Hello, Google hack - seems to request C when stat is in Auto mode
-    	setpoint = cToF(setpoint).toDouble().round(1)
+   	def temperatureScale = getTemperatureScale()
+    if ((temperatureScale() != 'C') && (setPoint < 35.0)) {
+    	setpoint = cToF(setpoint).toDouble().round(1)	// Hello, Google hack - seems to request C when stat is in Auto mode
         LOG ("setHeatingSetpoint() converted apparent C setpoint value to ${setpoint} F", 2, null, 'info')
     }
     
-
-	def heatingSetpoint = setpoint
-	def coolingSetpoint = device.currentValue("coolingSetpoint").toDouble()
+    // if in C, do all the math in C (converting the temps which are all stored in F)
+	def heatingSetpoint = setpoint.round(1)
+	def coolingSetpoint = (temperatureScale == 'C') ? FtoC(device.currentValue("coolingSetpoint")).toDouble().round(1) : device.currentValue("coolingSetpoint").toDouble().round(1)
 	def deviceId = getDeviceId()
 
 	LOG("setHeatingSetpoint() before compare: heatingSetpoint == ${heatingSetpoint}   coolingSetpoint == ${coolingSetpoint}", 4,null,'trace')
 	//enforce limits of heatingSetpoint vs coolingSetpoint
-	def low = device.currentValue("heatRangeLow")
-	def high = device.currentValue("heatRangeHigh")
+	def low = (temperatureScale == 'C') ? FtoC(device.currentValue("heatRangeLow")) : device.currentValue("heatRangeLow")
+	def high = (temperatureScale == 'C') ? FtoC(device.currentValue("heatRangeHigh")) : device.currentValue("heatRangeHigh")
 	
 	if (heatingSetpoint < low ) { heatingSetpoint = low }
 	if (heatingSetpoint > high) { heatingSetpoint = high}
-	if (heatingSetpoint > coolingSetpoint) {
+	if (heatingSetpoint < coolingSetpoint) {
 		coolingSetpoint = heatingSetpoint
 	}
 
@@ -1586,12 +1588,13 @@ void setCoolingSetpoint(Double setpoint) {
     }
 	LOG("setCoolingSetpoint() request with setpoint value = ${setpoint}", 2, null, 'info')
     
-    if ((setpoint < 35.0) /* && (getTemperatureScale() != 'C') */ /* && (device.currentValue('thermostatMode') == 'Auto') */ ) {	// Hello, Google hack - seems to request C when stat is in Auto mode
-    	setpoint = cToF(setpoint).toDouble().round(1)
+    def temperatureScale = getTemperatureScale()
+    if ((temperatureScale() != 'C') && (setPoint < 35.0)) {
+    	setpoint = cToF(setpoint).toDouble().round(1)	// Hello, Google hack - seems to request C when stat is in Auto mode
         LOG ("setCoolingSetpoint() converted apparent C setpoint value to ${setpoint} F", 2, null, 'info')
     }
 
-	def heatingSetpoint = device.currentValue("heatingSetpoint").toDouble()
+	def heatingSetpoint = (temperatureScale == 'C') ? FtoC(device.currentValue("heatingSetpoint")).toDouble().round(1) : device.currentValue("heatingSetpoint").toDouble().round(1)
 	def coolingSetpoint = setpoint
 	def deviceId = getDeviceId()
 
@@ -1599,12 +1602,12 @@ void setCoolingSetpoint(Double setpoint) {
 	LOG("setCoolingSetpoint() before compare: heatingSetpoint == ${heatingSetpoint}   coolingSetpoint == ${coolingSetpoint}")
 
 	//enforce limits of heatingSetpoint vs coolingSetpoint
-	def low = device.currentValue("coolRangeLow")
-	def high = device.currentValue("coolRangeHigh")
+	def low = (temperatureScale == 'C') ? FtoC(device.currentValue("coolRangeLow")) : device.currentValue("coolRangeLow")
+	def high = (temperatureScale == 'C') ? FtoC(device.currentValue("coolRangeHigh")) : device.currentValue("coolRangeHigh")
 	
 	if (coolingSetpoint < low ) { coolingSetpoint = low }
 	if (coolingSetpoint > high) { coolingSetpoint = high}
-	if (heatingSetpoint > coolingSetpoint) {
+	if (heatingSetpoint < coolingSetpoint) {
 		heatingSetpoint = coolingSetpoint
 	}
 
