@@ -42,11 +42,13 @@
  *	1.2.8 - Updates to fix logging for child.devices
  *	1.2.9 - Protect against LOG type errors
  *	1.2.10- Handle postalCode=0, display correct icon for emergency heat (with heat pump)
+ *	1.2.11- Optimize prior fix
+ *	1.2.12- Added minDelta handling (for setting heat/cool setpoints)
  *
  */  
 import groovy.json.JsonOutput
 
-def getVersionNum() { return "1.2.10" }
+def getVersionNum() { return "1.2.12" }
 private def getVersionLabel() { return "Ecobee (Connect) version ${getVersionNum()}" }
 private def getHelperSmartApps() {
 	return [ 
@@ -2418,6 +2420,13 @@ def updateThermostatData() {
             	tempWeatherTemperature = myConvertTemperatureIfNeeded( ((atomicState.weather[tid].temperature.toDouble() / 10.0)), "F", apiPrecision)
         	} else {tempWeatherTemperature = 451.0} // will happen only once, when weather object changes to shortWeather
         }
+     
+     // EQUIPMENT SPECIFICS
+		def hasHeatPump =  statSettings?.hasHeatPump
+		def hasForcedAir = statSettings?.hasForcedAir
+		def hasElectric =  statSettings?.hasElectric
+		def hasBoiler =    statSettings?.hasBoiler
+		def auxHeatMode =  (hasHeatPump) && (hasForcedAir || hasElectric || hasBoiler) // 'auxHeat1' == 'emergency' if using a heatPump
         
 	// handle[tid] things that only change when the thermostat object is updated
 		def heatHigh
@@ -2426,18 +2435,14 @@ def updateThermostatData() {
 		def coolLow
 		def heatRange
 		def coolRange
-		
-		def hasHeatPump
-		def hasForcedAir
-		def hasElectric
-		def hasBoiler
-		def auxHeatMode
 		Double tempHeatDiff = 0.0
         Double tempCoolDiff = 0.0
+        Double tempHeatCoolMinDelta = 1.0
 
-		if (forcePoll || thermostatUpdated || runtimeUpdated ) {
+		if (forcePoll || thermostatUpdated) {
             tempHeatDiff = statSettings.stage1HeatingDifferentialTemp.toDouble() / 10.0
             tempCoolDiff = statSettings.stage1CoolingDifferentialTemp.toDouble() / 10.0
+            tempHeatCoolMinDelta = statSettings.heatCoolMinDelta.toDouble() / 10.0
             
 			// RANGES
 			// UI works better with the same ranges for both heat and cool...
@@ -2450,13 +2455,6 @@ def updateThermostatData() {
 			// calculate these anyway (for now) - it's easier to read the range while debugging
 			heatRange = (heatLow && heatHigh) ? "(${Math.round(heatLow)}..${Math.round(heatHigh)})" : (usingMetric ? '(5..35)' : '(45..95)')
 			coolRange = (coolLow && coolHigh) ? "(${Math.round(coolLow)}..${Math.round(coolHigh)})" : (usingMetric ? '(5..35)' : '(45..95)')
-			
-			// EQUIPMENT SPECIFICS
-			hasHeatPump =  statSettings.hasHeatPump
-			hasForcedAir = statSettings.hasForcedAir
-			hasElectric =  statSettings.hasElectric
-			hasBoiler =    statSettings.hasBoiler
-			auxHeatMode =  (hasHeatPump) && (hasForcedAir || hasElectric || hasBoiler) // auxHeat = emergencyHeat if using a heatPump
 		}
  
 	// handle things that depend on both thermostat and runtime objects
@@ -2840,10 +2838,11 @@ def updateThermostatData() {
         	
             // Thermostat configuration stuff that almost never changes - if any one changes, send them all
         	def neverList = [statMode,autoMode,statHoldAction,coolStages,heatStages,/*heatHigh,heatLow,coolHigh,coolLow,*/heatRange,coolRange,climatesList,
-        						hasHeatPump,hasForcedAir,hasElectric,hasBoiler,auxHeatMode,hasHumidifier,hasDehumidifier,tempHeatDiff,tempCoolDiff] 
+        						hasHeatPump,hasForcedAir,hasElectric,hasBoiler,auxHeatMode,hasHumidifier,hasDehumidifier,tempHeatDiff,tempCoolDiff,tempHeatCoolMinDelta] 
  			if (forcePoll || (changeNever == [:]) || !changeNever.containsKey(tid) || (changeNever[tid] != neverList)) { 
                 def heatDiff = String.format("%.${apiPrecision}f", tempHeatDiff.toDouble().round(apiPrecision))
             	def coolDiff = String.format("%.${apiPrecision}f", tempCoolDiff.toDouble().round(apiPrecision))
+                def minDelta = String.format("%.${apiPrecision}f", tempHeatCoolMinDelta.toDouble().round(apiPrecision))
             	data += [
 					coolMode: (coolStages > 0),
             		coolStages: coolStages,
@@ -2869,6 +2868,7 @@ def updateThermostatData() {
 					hasDehumidifier: hasDehumidifier,
                 	heatDifferential: heatDiff,
                 	coolDifferential: coolDiff,
+                    heatCoolMinDelta: minDelta,
             	]
             	changeNever[tid] = neverList
             	atomicState.changeNever = changeNever
