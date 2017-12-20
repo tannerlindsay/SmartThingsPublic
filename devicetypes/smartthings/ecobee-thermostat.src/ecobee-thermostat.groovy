@@ -56,10 +56,11 @@
  *	1.2.16 - Fixed another typo in setThermostatProgram
  *	1.2.17 - Fixed CtoF/FtoC conversions in setHeat/CoolingSetpoint()
  *	1.2.18 - Fixed typos in prior fix, added heatCoolMinDelta handling
+ *	1.2.19 - Hard-coded thermostat commands entry points
  * 
  */
 
-def getVersionNum() { return "1.2.18" }
+def getVersionNum() { return "1.2.19" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -93,6 +94,8 @@ metadata {
 		command "switchMode"
         
         command "setThermostatProgram"
+        command "setThermostatMode"
+        command "setThermostatFanMode"
         command "setFanMinOnTime"
         command "setVacationFanMinOnTime"
         command "deleteVacation"
@@ -109,7 +112,18 @@ metadata {
         command "wakeup"
         command "awake"
         
+        command "off"				// redundant - should be predefined by the Thermostat capability
+        command "auto"
+        command "cool"
+        command "heat"
+        command "emergencyHeat"
+        command "emergency"
+        command "auxHeatOnly"
+        
         command "fanOff"  			// Missing from the Thermostat standard capability set
+        command "fanAuto"
+        command "fanCirculate"
+        
         command "noOp" 				// Workaround for formatting issues 
         command "setStateVariable"
         command "doRefresh"			// internal use by the refresh button
