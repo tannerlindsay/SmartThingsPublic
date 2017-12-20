@@ -55,10 +55,11 @@
  *	1.2.15 - Fixed typo that caused program changes to fail when logging level > 3
  *	1.2.16 - Fixed another typo in setThermostatProgram
  *	1.2.17 - Fixed CtoF/FtoC conversions in setHeat/CoolingSetpoint()
+ *	1.2.18 - Fixed typos in prior fix, added heatCoolMinDelta handling
  * 
  */
 
-def getVersionNum() { return "1.2.17" }
+def getVersionNum() { return "1.2.18" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -173,6 +174,7 @@ metadata {
 		attribute "holdStatus", "string"
         attribute "heatDifferential", "number"
         attribute "coolDifferential", "number"
+        attribute "heatCoolMinDelta", "number"
         attribute "fanMinOnTime", "number"
         attribute "programsList", "enum"
         attribute "thermostatOperatingStateDisplay", "string"
@@ -1250,6 +1252,7 @@ def generateEvent(Map results) {
 				case 'coolStages':
 				case 'heatDifferential':
 				case 'coolDifferential':
+                case 'heatCoolMinDelta':
                 case 'programsList':
                 case 'holdEndsAt':
                 case 'temperatureScale':
@@ -1518,31 +1521,37 @@ void setHeatingSetpoint(Double setpoint) {
         return
     }
 
-	LOG("setHeatingSetpoint() request with setpoint value = ${setpoint}", 2, null, 'info')
-    
    	def temperatureScale = getTemperatureScale()
-    if ((temperatureScale() != 'C') && (setPoint < 35.0)) {
+	LOG("setHeatingSetpoint() request with setpoint value = ${setpoint}, temperature scale is ${temperatureScale}", 2, null, 'info')
+    
+
+    if ((temperatureScale != 'C') && (setpoint < 35.0)) {
     	setpoint = cToF(setpoint).toDouble().round(1)	// Hello, Google hack - seems to request C when stat is in Auto mode
         LOG ("setHeatingSetpoint() converted apparent C setpoint value to ${setpoint} F", 2, null, 'info')
     }
-    
+
     // if in C, do all the math in C (converting the temps which are all stored in F)
-	def heatingSetpoint = setpoint.round(1)
-	def coolingSetpoint = (temperatureScale == 'C') ? FtoC(device.currentValue("coolingSetpoint")).toDouble().round(1) : device.currentValue("coolingSetpoint").toDouble().round(1)
+	def heatingSetpoint = setpoint.toDouble().round(1)
+	def coolingSetpoint = (temperatureScale == 'C') ? fToC(device.currentValue("coolingSetpoint")).toDouble().round(1) : device.currentValue("coolingSetpoint").toDouble().round(1)
 	def deviceId = getDeviceId()
 
 	LOG("setHeatingSetpoint() before compare: heatingSetpoint == ${heatingSetpoint}   coolingSetpoint == ${coolingSetpoint}", 4,null,'trace')
 	//enforce limits of heatingSetpoint vs coolingSetpoint
 	def low = (temperatureScale == 'C') ? FtoC(device.currentValue("heatRangeLow")) : device.currentValue("heatRangeLow")
 	def high = (temperatureScale == 'C') ? FtoC(device.currentValue("heatRangeHigh")) : device.currentValue("heatRangeHigh")
+    def delta = device.currentValue("heatCoolMinDelta")
+    if (!delta) delta = 1.0
 	
 	if (heatingSetpoint < low ) { heatingSetpoint = low }
 	if (heatingSetpoint > high) { heatingSetpoint = high}
-	if (heatingSetpoint < coolingSetpoint) {
-		coolingSetpoint = heatingSetpoint
-	}
+    // Must maintain the minimum delta between heat & cool setpoints
+	if (heatingSetpoint > coolingSetpoint) {
+		coolingSetpoint = heatingSetpoint + delta
+	} else if (coolingSetpoint < (heatingSetpoint + delta)) {
+    	coolingSetpoint = heatingSetpoint + delta
+    }
 
-	LOG("Sending setHeatingSetpoint> coolingSetpoint: ${coolingSetpoint}, heatingSetpoint: ${heatingSetpoint}")
+	LOG("setHeatingSetpoint() requesting coolingSetpoint: ${coolingSetpoint}, heatingSetpoint: ${heatingSetpoint}, delta ${delta}",2,null,'info')
 
 	def sendHoldType = whatHoldType()
     def sendHoldHours = null
@@ -1586,32 +1595,36 @@ void setCoolingSetpoint(Double setpoint) {
         generateQuickEvent('coolingSetpoint', device.currentValue('coolingSetpoint').toString())
         return
     }
-	LOG("setCoolingSetpoint() request with setpoint value = ${setpoint}", 2, null, 'info')
-    
     def temperatureScale = getTemperatureScale()
-    if ((temperatureScale() != 'C') && (setPoint < 35.0)) {
+	LOG("setCoolingSetpoint() request with setpoint value = ${setpoint}, temperature scale is ${temperatureScale}", 2, null, 'info')
+    
+    if ((temperatureScale != 'C') && (setpoint < 35.0)) {
     	setpoint = cToF(setpoint).toDouble().round(1)	// Hello, Google hack - seems to request C when stat is in Auto mode
         LOG ("setCoolingSetpoint() converted apparent C setpoint value to ${setpoint} F", 2, null, 'info')
     }
 
-	def heatingSetpoint = (temperatureScale == 'C') ? FtoC(device.currentValue("heatingSetpoint")).toDouble().round(1) : device.currentValue("heatingSetpoint").toDouble().round(1)
-	def coolingSetpoint = setpoint
+	def heatingSetpoint = (temperatureScale == 'C') ? fToC(device.currentValue("heatingSetpoint")).toDouble().round(1) : device.currentValue("heatingSetpoint").toDouble().round(1)
+	def coolingSetpoint = setpoint.toDouble().round(1)
 	def deviceId = getDeviceId()
-
 
 	LOG("setCoolingSetpoint() before compare: heatingSetpoint == ${heatingSetpoint}   coolingSetpoint == ${coolingSetpoint}")
 
 	//enforce limits of heatingSetpoint vs coolingSetpoint
 	def low = (temperatureScale == 'C') ? FtoC(device.currentValue("coolRangeLow")) : device.currentValue("coolRangeLow")
 	def high = (temperatureScale == 'C') ? FtoC(device.currentValue("coolRangeHigh")) : device.currentValue("coolRangeHigh")
-	
+	def delta = device.currentValue("heatCoolMinDelta")
+    if (!delta) delta = 1.0
+    
 	if (coolingSetpoint < low ) { coolingSetpoint = low }
 	if (coolingSetpoint > high) { coolingSetpoint = high}
-	if (heatingSetpoint < coolingSetpoint) {
-		heatingSetpoint = coolingSetpoint
-	}
+    // Must maintain the minimum delta between heat & cool setpoints
+	if (coolingSetpoint < heatingSetpoint) {
+		heatingSetpoint = coolingSetpoint - delta
+	} else if (heatingSetpoint > (coolingSetpoint - delta)) {
+    	heatingSetpoint = coolingSetpoint - delta
+    }
 
-	LOG("Sending setCoolingSetpoint> coolingSetpoint: ${coolingSetpoint}, heatingSetpoint: ${heatingSetpoint}")
+	LOG("setCoolingSetpoint() requesting coolingSetpoint: ${coolingSetpoint}, heatingSetpoint: ${heatingSetpoint}, delta ${delta}",2,null,'info')
 	def sendHoldType = whatHoldType()
     def sendHoldHours = null
     if (sendHoldType.isNumber()) {
