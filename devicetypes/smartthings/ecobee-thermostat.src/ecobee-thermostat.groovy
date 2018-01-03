@@ -57,10 +57,11 @@
  *	1.2.17 - Fixed CtoF/FtoC conversions in setHeat/CoolingSetpoint()
  *	1.2.18 - Fixed typos in prior fix, added heatCoolMinDelta handling
  *	1.2.19 - Hard-coded thermostat commands entry points
+ *	1.2.20 - Eliminate extraneous temp display between up/down arrows of multiAttributeTile
  * 
  */
 
-def getVersionNum() { return "1.2.19" }
+def getVersionNum() { return "1.2.20" }
 private def getVersionLabel() { return "Ecobee Thermostat version ${getVersionNum()}" }
 import groovy.json.JsonSlurper
  
@@ -218,7 +219,7 @@ metadata {
 			tileAttribute("device.temperatureDisplay", key: "PRIMARY_CONTROL") {
 				attributeState("default", label:'${currentValue}', unit:"dF", defaultState: true)
 			}
-			tileAttribute("device.temperature", key: "VALUE_CONTROL") {
+			tileAttribute("device.nothing", key: "VALUE_CONTROL") {
                 attributeState("default", action: "setTemperature")
 			}
             tileAttribute("device.humidity", key: "SECONDARY_CONTROL") {
@@ -257,7 +258,7 @@ metadata {
 				attributeState("temperature", label:'${currentValue}°', unit:"dF",
 				backgroundColors: getTempColors(), defaultState: true)
 			}
-			tileAttribute("device.temperature", key: "VALUE_CONTROL") {
+			tileAttribute("device.nothing", key: "VALUE_CONTROL") {
                 attributeState("default", action: "setTemperature")
 			}
             tileAttribute("device.humidity", key: "SECONDARY_CONTROL") {
