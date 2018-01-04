@@ -974,8 +974,14 @@ def initialize() {
     getZipCode()		// and atomicState.zipCode (because atomicState.forcePoll is true)
     
     // get sunrise/sunset for the location of the thermostats (prefers thermostat.location.postalCode)
-    def sunriseAndSunset = (atomicState.zipCode != null) ? getSunriseAndSunset(zipCode: atomicState.zipCode) : getSunRiseAndSunset()
+    def sunriseAndSunset = getSunriseAndSunset(zipCode: atomicState.zipCode)
+    if (!(sunriseAndSunset.sunrise instanceof Date)) {
+    	// the zip code is invalid or didn't return the data as expected
+	LOG("sunriseAndSunset not set as expected, using default hub location")
+	sunriseAndSunset = getSunriseAndSunset()
+    }
     LOG("sunriseAndSunset == ${sunriseAndSunset}")
+
     if(atomicState.timeZone) {
         atomicState.sunriseTime = sunriseAndSunset.sunrise.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
         atomicState.sunsetTime = sunriseAndSunset.sunset.format("HHmm", TimeZone.getTimeZone(atomicState.timeZone)).toInteger()
